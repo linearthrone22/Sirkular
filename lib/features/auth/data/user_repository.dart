@@ -29,8 +29,7 @@ class UserRepository {
 
   final AppDatabase _database;
 
-  static const _invalidCredentials =
-      AuthException('Invalid email or password');
+  static const _invalidCredentials = AuthException('Invalid email or password');
 
   Future<User> register({
     required String name,

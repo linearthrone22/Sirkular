@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
+import 'add_item_sheet.dart';
+import 'mix_match_pages.dart';
+import 'publish_sheet.dart';
+import 'restock_sheet.dart';
 
-/// Product grid with category chips, search, and selection, like the reference.
+/// Product grid. Tap a card to restock, tick the checkbox to select.
+/// Cards are shaded by sales: best sellers mint, slow movers faded grey.
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
 
@@ -13,6 +18,7 @@ class InventoryPage extends StatefulWidget {
 
 class _InventoryPageState extends State<InventoryPage> {
   final _searchController = TextEditingController();
+  late final List<InventoryItem> _items = List.of(InventoryData.items);
   final Set<String> _selected = {};
   String _query = '';
   String _category = InventoryData.categories.first;
@@ -25,12 +31,30 @@ class _InventoryPageState extends State<InventoryPage> {
 
   List<InventoryItem> get _visible {
     final query = _query.toLowerCase();
-    return InventoryData.items.where((item) {
+    return _items.where((item) {
       final matchesCategory =
           _category == 'Semua' || item.category == _category;
       final matchesQuery = item.name.toLowerCase().contains(query);
       return matchesCategory && matchesQuery;
     }).toList();
+  }
+
+  List<InventoryItem> get _picked =>
+      _items.where((i) => _selected.contains(i.name)).toList();
+
+  /// 0 for the best seller, 1 for the slowest. Based on all items.
+  double _salesRank(InventoryItem item) {
+    final ranked = List.of(_items)
+      ..sort((a, b) => b.sold30d.compareTo(a.sold30d));
+    final index = ranked.indexWhere((i) => i.name == item.name);
+    if (ranked.length <= 1) return 0;
+    return index / (ranked.length - 1);
+  }
+
+  List<Color> _gradientFor(double rank) {
+    if (rank == 0) return const [AppColors.mint, AppColors.mintDeep];
+    if (rank <= 0.5) return const [AppColors.mintSoft, AppColors.surface];
+    return const [Color(0xFFE4E6EA), AppColors.surface];
   }
 
   void _toggleSelected(InventoryItem item) {
@@ -39,12 +63,58 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-  void _createRecipe() {
-    // TODO: send the selected items to the AI R&D flow
-    final message = _selected.isEmpty
-        ? 'Pilih produk dulu'
-        : 'Membuat resep AI untuk ${_selected.length} produk';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _openRestock(InventoryItem item) async {
+    final newStock = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => RestockSheet(item: item),
+    );
+    if (newStock == null) return;
+    setState(() {
+      final index = _items.indexWhere((i) => i.name == item.name);
+      _items[index] = item.copyWithStock(newStock);
+    });
+  }
+
+  Future<void> _openAddItem() async {
+    final item = await showModalBottomSheet<InventoryItem>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const AddItemSheet(),
+    );
+    if (item == null) return;
+    setState(() => _items.add(item));
+  }
+
+  void _openMixMatch() {
+    if (_selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Centang bahan dulu untuk dicampur.')),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MixMatchLoadingPage(items: _picked),
+      ),
+    );
+  }
+
+  Future<void> _openPublish() async {
+    if (_selected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Centang produk yang akan dijual.')),
+      );
+      return;
+    }
+    final published = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => PublishSheet(items: _picked),
+    );
+    if (published == true) setState(_selected.clear);
   }
 
   @override
@@ -112,7 +182,8 @@ class _InventoryPageState extends State<InventoryPage> {
               height: 52,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 children: [
                   for (final category in InventoryData.categories)
                     Padding(
@@ -130,6 +201,13 @@ class _InventoryPageState extends State<InventoryPage> {
                 ],
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+              child: Text(
+                'Ketuk kartu untuk restok · centang untuk pilih',
+                style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
+              ),
+            ),
             Expanded(
               child: items.isEmpty
                   ? Center(
@@ -145,13 +223,15 @@ class _InventoryPageState extends State<InventoryPage> {
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                       mainAxisSpacing: 12,
                       crossAxisSpacing: 12,
-                      childAspectRatio: 0.7,
+                      childAspectRatio: 0.66,
                       children: [
                         for (final item in items)
                           _ItemCard(
                             item: item,
                             selected: _selected.contains(item.name),
-                            onTap: () => _toggleSelected(item),
+                            gradient: _gradientFor(_salesRank(item)),
+                            onSelect: () => _toggleSelected(item),
+                            onRestock: () => _openRestock(item),
                           ),
                       ],
                     ),
@@ -163,21 +243,34 @@ class _InventoryPageState extends State<InventoryPage> {
                   _RoundButton(
                     icon: Icons.add_rounded,
                     size: 56,
-                    onTap: () {
-                      // TODO: add a new item
-                    },
+                    onTap: _openAddItem,
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _createRecipe,
+                      onPressed: _openMixMatch,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.purple,
                         foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 56),
                       ),
                       icon: const Icon(Icons.auto_awesome, size: 18),
-                      label: const Text('Buat Resep AI'),
+                      label: Text(
+                        _selected.isEmpty
+                            ? 'Buat Resep AI'
+                            : 'Buat Resep AI (${_selected.length})',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
+                  ),
+                  const SizedBox(width: 10),
+                  ElevatedButton.icon(
+                    onPressed: _openPublish,
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(0, 56),
+                    ),
+                    icon: const Icon(Icons.storefront_outlined, size: 18),
+                    label: const Text('Jual'),
                   ),
                 ],
               ),
@@ -193,17 +286,21 @@ class _ItemCard extends StatelessWidget {
   const _ItemCard({
     required this.item,
     required this.selected,
-    required this.onTap,
+    required this.gradient,
+    required this.onSelect,
+    required this.onRestock,
   });
 
   final InventoryItem item;
   final bool selected;
-  final VoidCallback onTap;
+  final List<Color> gradient;
+  final VoidCallback onSelect;
+  final VoidCallback onRestock;
 
   Color get _statusColor {
     switch (item.status) {
       case InventoryStatus.inStock:
-        return AppColors.mint;
+        return AppColors.mintDeep;
       case InventoryStatus.lowStock:
         return AppColors.orange;
       case InventoryStatus.outOfStock:
@@ -216,13 +313,19 @@ class _ItemCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     return InkWell(
       borderRadius: BorderRadius.circular(24),
-      onTap: onTap,
+      onTap: onRestock,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: selected ? AppColors.mint : AppColors.surface,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: gradient,
+          ),
           borderRadius: BorderRadius.circular(24),
+          border:
+              selected ? Border.all(color: AppColors.ink, width: 1.5) : null,
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.05),
@@ -236,7 +339,14 @@ class _ItemCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                _Checkbox(selected: selected),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onSelect,
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: _Checkbox(selected: selected),
+                  ),
+                ),
                 const Spacer(),
                 Text(
                   item.category,
@@ -250,12 +360,10 @@ class _ItemCard extends StatelessWidget {
             Expanded(
               child: Center(
                 child: Container(
-                  width: 84,
-                  height: 84,
+                  width: 80,
+                  height: 80,
                   decoration: BoxDecoration(
-                    color: selected
-                        ? Colors.white.withValues(alpha: 0.5)
-                        : AppColors.background,
+                    color: Colors.white.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Icon(item.icon, size: 40, color: AppColors.ink),
@@ -267,12 +375,13 @@ class _ItemCard extends StatelessWidget {
               item.name,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              style:
+                  textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 2),
             Text(
-              item.price,
-              style: textTheme.bodySmall?.copyWith(color: AppColors.muted),
+              '${item.price} · terjual ${item.sold30d}x',
+              style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
             ),
             const SizedBox(height: 8),
             Container(

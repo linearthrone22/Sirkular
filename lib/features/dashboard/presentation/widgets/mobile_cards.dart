@@ -2,7 +2,6 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../data/user_rules.dart';
 import 'dashboard_widgets.dart';
 
 /// Metric card in the reference style: icon, label, number, sparkline, delta.
@@ -15,6 +14,7 @@ class MetricCard extends StatelessWidget {
     required this.color,
     this.delta,
     this.trend = const [],
+    this.onTap,
   });
 
   final String label;
@@ -23,61 +23,67 @@ class MetricCard extends StatelessWidget {
   final Color color;
   final int? delta;
   final List<double> trend;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return DashCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: color, size: 20),
-              ),
-              const Spacer(),
-              const _CircleArrow(),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: textTheme.labelMedium?.copyWith(color: AppColors.muted),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              if (trend.isNotEmpty)
-                Expanded(
-                  child: SizedBox(
-                    height: 32,
-                    child: Sparkline(values: trend, color: AppColors.ink),
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: DashCard(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                )
-              else
+                  child: Icon(icon, color: color, size: 20),
+                ),
                 const Spacer(),
-              if (delta != null) DeltaBadge(delta: delta!),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '7 hari terakhir',
-            style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
-          ),
-        ],
+                const _CircleArrow(),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              label,
+              style: textTheme.labelMedium?.copyWith(color: AppColors.muted),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style:
+                  textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            Row(
+              children: [
+                if (trend.isNotEmpty)
+                  Expanded(
+                    child: SizedBox(
+                      height: 32,
+                      child: Sparkline(values: trend, color: AppColors.ink),
+                    ),
+                  )
+                else
+                  const Spacer(),
+                if (delta != null) DeltaBadge(delta: delta!),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '7 hari terakhir',
+              style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -343,123 +349,6 @@ class StockSegment {
   final String label;
   final int value;
   final Color color;
-}
-
-/// The user's rules with a working toggle per rule.
-class RulesCard extends StatelessWidget {
-  const RulesCard({super.key, required this.rules, required this.onToggle});
-
-  final List<UserRule> rules;
-  final void Function(UserRule rule) onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final activeCount = rules.where((r) => r.active).length;
-
-    return DashCard(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'Aturan Saya',
-                  style: textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              StatusBadge(
-                text: '$activeCount aktif',
-                color: AppColors.mint,
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Otomatisasi untuk stok, harga, dan resep.',
-            style: textTheme.bodySmall?.copyWith(color: AppColors.muted),
-          ),
-          for (final rule in rules) ...[
-            const Divider(height: 24),
-            _RuleTile(rule: rule, onToggle: () => onToggle(rule)),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _RuleTile extends StatelessWidget {
-  const _RuleTile({required this.rule, required this.onToggle});
-
-  final UserRule rule;
-  final VoidCallback onToggle;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final tint = rule.isAi ? AppColors.purple : AppColors.mintDeep;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: tint.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            rule.isAi ? Icons.auto_awesome : Icons.rule_rounded,
-            color: tint,
-            size: 20,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                rule.title,
-                style: textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Jika ${rule.condition}',
-                style: textTheme.bodySmall?.copyWith(color: AppColors.muted),
-              ),
-              Text(
-                '→ ${rule.action}',
-                style: textTheme.bodySmall,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Terpicu ${rule.triggeredToday}x hari ini',
-                style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
-              ),
-            ],
-          ),
-        ),
-        Switch(
-          value: rule.active,
-          onChanged: (_) => onToggle(),
-          activeTrackColor: AppColors.mint,
-          inactiveTrackColor: AppColors.border,
-          activeThumbColor: Colors.white,
-          inactiveThumbColor: Colors.white,
-          trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
-        ),
-      ],
-    );
-  }
 }
 
 /// Sparkline for a small trend, with no axes.

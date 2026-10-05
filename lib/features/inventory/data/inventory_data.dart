@@ -10,6 +10,7 @@ class InventoryItem {
     required this.stock,
     required this.unit,
     required this.icon,
+    required this.sold30d,
   });
 
   final String name;
@@ -19,6 +20,9 @@ class InventoryItem {
   final String unit;
   final IconData icon;
 
+  /// Units sold in the last 30 days. Used to rank card colors.
+  final int sold30d;
+
   InventoryStatus get status {
     if (stock == 0) return InventoryStatus.outOfStock;
     if (stock < 10) return InventoryStatus.lowStock;
@@ -26,6 +30,18 @@ class InventoryItem {
   }
 
   String get stockLabel => 'Stok: $stock $unit';
+
+  InventoryItem copyWithStock(int newStock) {
+    return InventoryItem(
+      name: name,
+      category: category,
+      price: price,
+      stock: newStock,
+      unit: unit,
+      icon: icon,
+      sold30d: sold30d,
+    );
+  }
 }
 
 /// Mock inventory. Replace with SQLite data once the inventory table exists.
@@ -42,6 +58,7 @@ class InventoryData {
       stock: 13,
       unit: 'pcs',
       icon: Icons.bakery_dining_outlined,
+      sold30d: 142,
     ),
     InventoryItem(
       name: 'Muffin Roti Sisa',
@@ -50,6 +67,7 @@ class InventoryData {
       stock: 26,
       unit: 'pcs',
       icon: Icons.cake_outlined,
+      sold30d: 96,
     ),
     InventoryItem(
       name: 'Crumble Roti',
@@ -58,6 +76,7 @@ class InventoryData {
       stock: 8,
       unit: 'pack',
       icon: Icons.cookie_outlined,
+      sold30d: 58,
     ),
     InventoryItem(
       name: 'Pudding Roti',
@@ -66,6 +85,7 @@ class InventoryData {
       stock: 19,
       unit: 'cup',
       icon: Icons.icecream_outlined,
+      sold30d: 31,
     ),
     InventoryItem(
       name: 'Tepung Terigu 1kg',
@@ -74,6 +94,16 @@ class InventoryData {
       stock: 7,
       unit: 'kg',
       icon: Icons.grain,
+      sold30d: 12,
+    ),
+    InventoryItem(
+      name: 'Susu UHT 1L',
+      category: 'Bahan',
+      price: 'Rp 19.000',
+      stock: 4,
+      unit: 'L',
+      icon: Icons.local_drink_outlined,
+      sold30d: 9,
     ),
     InventoryItem(
       name: 'Gula Aren 500g',
@@ -82,6 +112,7 @@ class InventoryData {
       stock: 0,
       unit: 'pcs',
       icon: Icons.water_drop_outlined,
+      sold30d: 4,
     ),
     InventoryItem(
       name: 'Kemasan Box M',
@@ -90,6 +121,7 @@ class InventoryData {
       stock: 40,
       unit: 'pcs',
       icon: Icons.inventory_2_outlined,
+      sold30d: 75,
     ),
   ];
 }

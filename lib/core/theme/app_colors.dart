@@ -20,7 +20,8 @@ class AppColors {
   static const purple = Color(0xFF5530D8);
 
   // Supporting tones
-  static const mintDeep = Color(0xFF23A97A); // gradient end, text-safe on purple
+  static const mintDeep =
+      Color(0xFF23A97A); // gradient end, text-safe on purple
   static const mintSoft = Color(0xFFE3F8EF); // badge and avatar background
   static const purpleLight = Color(0xFFB4A3FF); // AI icons on the dark sidebar
   static const sidebar = Color(0xFF1A1333); // deep purple, near black

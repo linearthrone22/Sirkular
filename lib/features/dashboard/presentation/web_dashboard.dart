@@ -251,9 +251,8 @@ class _NavItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = selected
-        ? AppColors.sidebar
-        : Colors.white.withValues(alpha: 0.75);
+    final foreground =
+        selected ? AppColors.sidebar : Colors.white.withValues(alpha: 0.75);
     final iconColor = selected
         ? AppColors.sidebar
         : (aiAccent ? AppColors.purpleLight : foreground);
@@ -342,7 +341,8 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: height,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
+      child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: children),
     );
   }
 }

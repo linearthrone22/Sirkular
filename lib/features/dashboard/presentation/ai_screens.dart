@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -60,7 +59,8 @@ class _AiProcessingPageState extends State<AiProcessingPage> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) => const AiInsightsPage(message: DashboardData.analysisResult),
+          builder: (_) =>
+              const AiInsightsPage(message: DashboardData.analysisResult),
         ),
       );
     });
