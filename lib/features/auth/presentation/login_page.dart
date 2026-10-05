@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/user_repository.dart';
-import 'home_page.dart';
+import '../../dashboard/presentation/home_page.dart';
 import 'register_page.dart';
 import 'widgets/auth_validators.dart';
 import 'widgets/auth_widgets.dart';
