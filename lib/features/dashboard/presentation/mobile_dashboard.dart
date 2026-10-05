@@ -2,19 +2,40 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/user_repository.dart';
+import '../../inventory/presentation/inventory_page.dart';
 import '../data/dashboard_data.dart';
+import '../data/user_rules.dart';
 import 'ai_screens.dart';
 import 'widgets/dashboard_widgets.dart';
+import 'widgets/mobile_cards.dart';
 
-class MobileDashboard extends StatelessWidget {
+class MobileDashboard extends StatefulWidget {
   const MobileDashboard({super.key, required this.user});
 
   final User user;
 
   @override
+  State<MobileDashboard> createState() => _MobileDashboardState();
+}
+
+class _MobileDashboardState extends State<MobileDashboard> {
+  final List<UserRule> _rules = UserRules.defaults();
+
+  void _toggleRule(UserRule rule) {
+    setState(() => rule.active = !rule.active);
+  }
+
+  void _openInventory() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const InventoryPage()),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final firstName = user.name.split(' ').first;
+    final firstName = widget.user.name.split(' ').first;
+    const days = DashboardData.channelSales;
 
     return Scaffold(
       bottomNavigationBar: SafeArea(
@@ -28,9 +49,7 @@ class MobileDashboard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              _CameraButton(
-                onTap: () => startPhotoAnalysis(context),
-              ),
+              _InventoryButton(onTap: _openInventory),
             ],
           ),
         ),
@@ -68,7 +87,7 @@ class MobileDashboard extends StatelessWidget {
                   },
                 ),
                 const SizedBox(width: 8),
-                UserAvatarMenu(user: user),
+                UserAvatarMenu(user: widget.user),
               ],
             ),
             const SizedBox(height: 20),
@@ -100,6 +119,23 @@ class MobileDashboard extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: const LinearProgressIndicator(
+                      value: 0.8,
+                      minHeight: 8,
+                      color: AppColors.mint,
+                      backgroundColor: AppColors.border,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Target Rp 30.000.000 · 80% tercapai',
+                    style: textTheme.labelSmall?.copyWith(
+                      color: AppColors.muted,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -110,27 +146,33 @@ class MobileDashboard extends StatelessWidget {
               physics: const NeverScrollableScrollPhysics(),
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 1.05,
+              childAspectRatio: 0.78,
               children: const [
-                KpiCard(
+                MetricCard(
                   label: 'Pesanan Tokopedia',
                   value: DashboardData.tokopediaOrders,
                   icon: Icons.storefront_rounded,
-                  color: AppColors.mint,
+                  color: AppColors.mintDeep,
+                  delta: 2,
+                  trend: [12, 18, 15, 22, 28, 31, 24],
                 ),
-                KpiCard(
+                MetricCard(
                   label: 'Pesanan Shopee',
                   value: DashboardData.shopeeOrders,
                   icon: Icons.shopping_bag_outlined,
                   color: AppColors.orange,
+                  delta: -3,
+                  trend: [8, 10, 12, 14, 18, 22, 19],
                 ),
-                KpiCard(
+                MetricCard(
                   label: 'Deadstock Saved',
                   value: DashboardData.deadstockKg,
                   icon: Icons.eco_outlined,
-                  color: AppColors.mint,
+                  color: AppColors.mintDeep,
+                  delta: 2,
+                  trend: [4, 6, 5, 9, 8, 12, 15],
                 ),
-                KpiCard(
+                MetricCard(
                   label: 'Sync Status',
                   value: DashboardData.syncStatus,
                   icon: Icons.sync_rounded,
@@ -138,6 +180,47 @@ class MobileDashboard extends StatelessWidget {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            OrdersCard(
+              stats: const [
+                OrderStat(
+                  value: DashboardData.tokopediaOrders,
+                  label: 'Tokopedia',
+                ),
+                OrderStat(value: DashboardData.shopeeOrders, label: 'Shopee'),
+                OrderStat(value: '14', label: 'Dikemas'),
+                OrderStat(value: '3', label: 'Dikirim'),
+              ],
+              values: [for (final d in days) d.total],
+              days: [for (final d in days) d.day],
+            ),
+            const SizedBox(height: 16),
+            const StockStatusCard(
+              segments: [
+                StockSegment(
+                  label: 'In stock',
+                  value: 90,
+                  color: AppColors.ink,
+                ),
+                StockSegment(
+                  label: 'Low stock',
+                  value: 20,
+                  color: Colors.white,
+                ),
+                StockSegment(
+                  label: 'Out of stock',
+                  value: 8,
+                  color: AppColors.danger,
+                ),
+                StockSegment(
+                  label: 'Dead stock',
+                  value: 16,
+                  color: AppColors.mintDeep,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            RulesCard(rules: _rules, onToggle: _toggleRule),
             const SizedBox(height: 24),
             const SectionTitle('Live Orders'),
             const SizedBox(height: 12),
@@ -190,6 +273,7 @@ class MobileDashboard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
+            const SizedBox(height: 96),
           ],
         ),
       ),
@@ -273,16 +357,16 @@ class _InsightPill extends StatelessWidget {
   }
 }
 
-/// Right button of the bottom bar: opens the camera for photo analysis.
-class _CameraButton extends StatelessWidget {
-  const _CameraButton({required this.onTap});
+/// Right button of the bottom bar: opens the inventory screen.
+class _InventoryButton extends StatelessWidget {
+  const _InventoryButton({required this.onTap});
 
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.purple,
+      color: AppColors.ink,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -290,7 +374,7 @@ class _CameraButton extends StatelessWidget {
         child: const SizedBox(
           width: 60,
           height: 60,
-          child: Icon(Icons.photo_camera_rounded, color: Colors.white),
+          child: Icon(Icons.inventory_2_outlined, color: Colors.white),
         ),
       ),
     );
