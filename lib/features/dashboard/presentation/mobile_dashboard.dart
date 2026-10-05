@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -330,7 +332,7 @@ Color statusColor(String status) {
   }
 }
 
-/// Left pill of the bottom bar: AI alerts, opens the insights list.
+/// Left pill of the bottom bar: dark glass pill with an AI orb, like the reference.
 class _InsightPill extends StatelessWidget {
   const _InsightPill({required this.onTap});
 
@@ -339,54 +341,63 @@ class _InsightPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    return Material(
-      color: AppColors.surface,
-      elevation: 0,
+    return ClipRRect(
       borderRadius: BorderRadius.circular(999),
-      child: Ink(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(999),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(999),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(8, 8, 12, 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: [AppColors.purple, AppColors.mintDeep],
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Material(
+          color: AppColors.ink.withValues(alpha: 0.86),
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [AppColors.purple, AppColors.mintDeep],
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.auto_awesome,
+                      color: Colors.white,
+                      size: 22,
                     ),
                   ),
-                  child: const Icon(
-                    Icons.auto_awesome,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    DashboardData.aiAlertsCount,
-                    style: textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      DashboardData.aiAlertsCount,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                const Icon(Icons.arrow_forward_rounded, size: 20),
-              ],
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ),
             ),
           ),
         ),
@@ -395,7 +406,7 @@ class _InsightPill extends StatelessWidget {
   }
 }
 
-/// Right button of the bottom bar: opens the inventory screen.
+/// Right round button of the bottom bar: large white circle, opens inventory.
 class _InventoryButton extends StatelessWidget {
   const _InventoryButton({required this.onTap});
 
@@ -404,15 +415,18 @@ class _InventoryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.ink,
+      color: Colors.white,
       shape: const CircleBorder(),
+      elevation: 6,
+      shadowColor: Colors.black.withValues(alpha: 0.3),
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: const SizedBox(
-          width: 60,
-          height: 60,
-          child: Icon(Icons.inventory_2_outlined, color: Colors.white),
+          width: 68,
+          height: 68,
+          child:
+              Icon(Icons.inventory_2_outlined, color: AppColors.ink, size: 28),
         ),
       ),
     );
