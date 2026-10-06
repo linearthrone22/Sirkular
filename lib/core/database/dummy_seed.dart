@@ -17,6 +17,9 @@ class DummySeed {
 
   final AppDatabase _db;
 
+  /// Makes sure Johanes exists and has the dummy data. Creates the account
+  /// only if it is missing, so an existing account keeps its password. The
+  /// data is written only when the account has no products yet.
   Future<void> ensureSeeded({DateTime? now}) async {
     final d = await _db.database;
     final existing = await d.query(
@@ -26,24 +29,39 @@ class DummySeed {
       whereArgs: [email],
       limit: 1,
     );
-    if (existing.isNotEmpty) return;
 
-    final clock = now ?? DateTime.now();
-    final user = await UserRepository(database: _db).register(
-      name: name,
-      email: email,
-      password: password,
+    final int userId;
+    if (existing.isNotEmpty) {
+      userId = existing.first['id'] as int;
+    } else {
+      final user = await UserRepository(database: _db).register(
+        name: name,
+        email: email,
+        password: password,
+      );
+      userId = user.id;
+    }
+
+    final products = await d.rawQuery(
+      'SELECT COUNT(*) AS n FROM inventory_items WHERE user_id = ?',
+      [userId],
     );
+    if ((products.first['n'] as int) > 0) return;
+
+    await _seedData(userId, now ?? DateTime.now());
+  }
+
+  Future<void> _seedData(int userId, DateTime clock) async {
     final dashboard = DashboardRepository(database: _db);
     final inventory = InventoryRepository(database: _db);
     final recipes = RecipeRepository(database: _db);
 
-    await _seedPlatforms(dashboard, user.id, clock);
-    await _seedKpis(dashboard, user.id, clock);
-    await _seedInsights(dashboard, user.id, clock);
-    await _seedOrders(dashboard, user.id, clock);
-    final itemIds = await _seedInventory(inventory, user.id);
-    await _seedRecipes(recipes, user.id, [
+    await _seedPlatforms(dashboard, userId, clock);
+    await _seedKpis(dashboard, userId, clock);
+    await _seedInsights(dashboard, userId, clock);
+    await _seedOrders(dashboard, userId, clock);
+    final itemIds = await _seedInventory(inventory, userId);
+    await _seedRecipes(recipes, userId, [
       itemIds['Roti Tawar Sisa']!,
       itemIds['Susu UHT 1L']!,
     ]);
