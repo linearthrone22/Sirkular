@@ -96,7 +96,7 @@ class _InventoryPageState extends State<InventoryPage> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => const AddItemSheet(),
+      builder: (_) => AddItemSheet(userId: widget.userId),
     );
     if (item == null) return;
     await _inventory.addItem(widget.userId, item);

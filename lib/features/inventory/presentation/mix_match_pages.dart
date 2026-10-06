@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/format/format.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../dashboard/presentation/widgets/dashboard_widgets.dart';
+import '../data/inventory_ai.dart';
 import '../data/inventory_data.dart';
 import '../data/recipe_data.dart';
 import '../data/recipe_repository.dart';
@@ -26,6 +27,7 @@ class MixMatchLoadingPage extends StatefulWidget {
 class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
     with SingleTickerProviderStateMixin {
   final _recipes = RecipeRepository();
+  final _ai = InventoryAi();
 
   late final AnimationController _pulse = AnimationController(
     vsync: this,
@@ -54,18 +56,20 @@ class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
       input: {'items': sourceIds},
     );
     try {
+      // The AI call runs while the status lines play.
+      final ideas = _ai.generateIdeas(widget.items);
       for (var i = 0; i < RecipeData.loadingMessages.length; i++) {
         if (!mounted) return;
         setState(() => _step = i);
         await Future<void>.delayed(const Duration(milliseconds: 1200));
       }
+      final drafts = await ideas;
 
-      // TODO: replace RecipeData.ideas with the Gemini response.
       final recipeIds = await _recipes.saveRecipes(
         widget.userId,
         requestId: requestId,
         sourceItemIds: sourceIds,
-        drafts: [for (final idea in RecipeData.ideas) idea.toDraft()],
+        drafts: drafts,
       );
       await _recipes
           .completeRequest(requestId, output: {'recipeIds': recipeIds});

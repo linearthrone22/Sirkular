@@ -5,27 +5,16 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
+import '../../../core/format/format.dart';
+import '../data/inventory_ai.dart';
 import '../data/inventory_repository.dart';
-
-/// Result of reading a photo: the fields the form fills in.
-class ItemDraft {
-  const ItemDraft({
-    required this.name,
-    required this.category,
-    required this.stock,
-    required this.price,
-  });
-
-  final String name;
-  final String category;
-  final String stock;
-  final String price;
-}
 
 /// Bottom sheet to add an item manually or fill it from a photo with AI.
 /// Pops with a [NewItem] for the caller to save.
 class AddItemSheet extends StatefulWidget {
-  const AddItemSheet({super.key});
+  const AddItemSheet({super.key, required this.userId});
+
+  final int userId;
 
   @override
   State<AddItemSheet> createState() => _AddItemSheetState();
@@ -58,14 +47,14 @@ class _AddItemSheetState extends State<AddItemSheet> {
       if (image == null) return;
 
       final bytes = await image.readAsBytes();
-      final draft = await _analyzePhoto(bytes);
+      final draft = await InventoryAi().analyzePhoto(widget.userId, bytes);
       if (!mounted) return;
 
       setState(() {
         _nameController.text = draft.name;
         _category = draft.category;
-        _stockController.text = draft.stock;
-        _priceController.text = draft.price;
+        _stockController.text = '${draft.stock}';
+        _priceController.text = rupiah(draft.priceIdr);
       });
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -75,18 +64,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
-  }
-
-  /// TODO: send the photo to the Gemini API and parse its JSON reply.
-  /// Returns a fixed draft for now so the form flow can be tested.
-  Future<ItemDraft> _analyzePhoto(Uint8List bytes) async {
-    await Future<void>.delayed(const Duration(milliseconds: 1500));
-    return const ItemDraft(
-      name: 'Sisa Adonan Croissant',
-      category: 'Bahan',
-      stock: '2',
-      price: 'Rp 6.000',
-    );
   }
 
   void _save() {
