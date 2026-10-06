@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/format/format.dart';
 import 'inventory_repository.dart';
-import 'recipe_data.dart';
+import 'product_icons.dart';
 
 enum InventoryStatus { inStock, lowStock, outOfStock }
 

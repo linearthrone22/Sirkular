@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 import 'recipe_repository.dart';
 
 /// One recipe idea. Stored as a [RecipeDraft] once generated.
@@ -104,28 +102,4 @@ class RecipeData {
       ],
     ),
   ];
-}
-
-/// Maps a stored icon key to an icon. Used by every screen that shows a product.
-IconData iconForKey(String key) {
-  switch (key) {
-    case 'bakery':
-      return Icons.bakery_dining_outlined;
-    case 'cake':
-      return Icons.cake_outlined;
-    case 'cookie':
-      return Icons.cookie_outlined;
-    case 'icecream':
-      return Icons.icecream_outlined;
-    case 'grain':
-      return Icons.grain;
-    case 'milk':
-      return Icons.local_drink_outlined;
-    case 'drop':
-      return Icons.water_drop_outlined;
-    case 'box':
-      return Icons.inventory_2_outlined;
-    default:
-      return Icons.inventory_2_outlined;
-  }
 }

@@ -6,6 +6,7 @@ import '../../dashboard/presentation/widgets/dashboard_widgets.dart';
 import '../data/inventory_ai.dart';
 import '../data/inventory_data.dart';
 import '../data/recipe_data.dart';
+import 'product_icon_image.dart';
 import '../data/recipe_repository.dart';
 
 /// Full-screen loading with a pulsing AI spark and cycling status text.
@@ -264,7 +265,7 @@ class _IdeaCard extends StatelessWidget {
                     color: AppColors.mintSoft,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(iconForKey(recipe.iconKey), color: AppColors.ink),
+                  child: ProductIconImage(iconKey: recipe.iconKey, size: 36),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

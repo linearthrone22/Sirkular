@@ -7,6 +7,8 @@ import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
 import '../../../core/format/format.dart';
 import '../data/inventory_ai.dart';
+import '../data/product_icons.dart';
+import 'product_icon_image.dart';
 import '../data/inventory_repository.dart';
 
 /// Bottom sheet to add an item manually or fill it from a photo with AI.
@@ -26,6 +28,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
   final _stockController = TextEditingController();
   final _priceController = TextEditingController();
   String _category = 'Roti';
+  String _iconKey = 'bakery';
   bool _scanning = false;
 
   @override
@@ -53,6 +56,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
       setState(() {
         _nameController.text = draft.name;
         _category = draft.category;
+        _iconKey = _iconKeyFor(draft.category);
         _stockController.text = '${draft.stock}';
         _priceController.text = rupiah(draft.priceIdr);
       });
@@ -75,7 +79,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
         category: _category,
         stock: int.tryParse(_stockController.text.trim()) ?? 0,
         priceIdr: int.tryParse(digits) ?? 0,
-        iconKey: _iconKeyFor(_category),
+        iconKey: _iconKey,
       ),
     );
   }
@@ -154,13 +158,53 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     ChoiceChip(
                       label: Text(c),
                       selected: _category == c,
-                      onSelected: (_) => setState(() => _category = c),
+                      onSelected: (_) => setState(() {
+                        _category = c;
+                        _iconKey = _iconKeyFor(c);
+                      }),
                       selectedColor: AppColors.mint,
                       backgroundColor: AppColors.background,
                       side: BorderSide.none,
                       showCheckmark: false,
                     ),
                 ],
+              ),
+              Text(
+                'Jenis produk',
+                style: textTheme.labelMedium?.copyWith(color: AppColors.muted),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 64,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    for (final icon in productIcons)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _iconKey = icon.key),
+                          child: Container(
+                            width: 60,
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: _iconKey == icon.key
+                                  ? AppColors.mintSoft
+                                  : AppColors.background,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: _iconKey == icon.key
+                                    ? AppColors.ink
+                                    : Colors.transparent,
+                              ),
+                            ),
+                            child:
+                                ProductIconImage(iconKey: icon.key, size: 36),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               Row(

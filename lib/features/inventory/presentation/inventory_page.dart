@@ -4,6 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
 import '../data/inventory_repository.dart';
 import 'add_item_sheet.dart';
+import 'product_icon_image.dart';
 import 'mix_match_pages.dart';
 import 'publish_sheet.dart';
 import 'restock_sheet.dart';
@@ -457,7 +458,7 @@ class _ItemCard extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.55),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: Icon(item.icon, size: 40, color: AppColors.ink),
+                  child: ProductIconImage(iconKey: item.iconKey, size: 48),
                 ),
               ),
             ),
