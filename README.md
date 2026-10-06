@@ -1,5 +1,4 @@
 
-https://github.com/user-attachments/assets/a2f17d0c-360f-4e26-8449-f4dd4bf50028
 <p align="center">
   <img src="assets/images/logo.png" alt="Sirkular logo" width="140" />
 </p>
