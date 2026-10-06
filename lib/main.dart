@@ -7,7 +7,7 @@ import 'features/auth/presentation/login_page.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Writes the demo account and its data on first launch only.
-  await DummySeed().ensureSeeded();
+  await DummySeed().ensureAllSeeded();
   runApp(const SirkularApp());
 }
 

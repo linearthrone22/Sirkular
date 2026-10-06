@@ -30,4 +30,21 @@ void main() {
     final items = await InventoryRepository(database: db).items(user.id);
     expect(items, hasLength(8));
   });
+
+  test('every demo account is created with its data', () async {
+    final db = AppDatabase.open(
+        factory: databaseFactoryFfi, path: inMemoryDatabasePath);
+    addTearDown(db.close);
+
+    await DummySeed(database: db).ensureAllSeeded();
+
+    for (final account in DummySeed.accounts) {
+      final user = await UserRepository(database: db).login(
+        email: account.email,
+        password: account.password,
+      );
+      final items = await InventoryRepository(database: db).items(user.id);
+      expect(items, hasLength(8), reason: account.email);
+    }
+  });
 }

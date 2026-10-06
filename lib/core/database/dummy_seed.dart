@@ -6,12 +6,38 @@ import '../../features/inventory/data/recipe_repository.dart';
 import '../format/format.dart';
 import 'app_database.dart';
 
-/// Creates Johanes's demo account and writes the dummy data into SQLite.
-/// Runs once: if the account already exists, nothing is written.
+/// A demo account that gets the dummy data.
+class SeedAccount {
+  const SeedAccount({
+    required this.name,
+    required this.email,
+    required this.password,
+  });
+
+  final String name;
+  final String email;
+  final String password;
+}
+
+/// Creates the demo accounts and writes the dummy data into SQLite.
+/// Each account is created only if missing, and gets data only if it has no
+/// products yet, so running it again changes nothing.
 class DummySeed {
   DummySeed({AppDatabase? database}) : _db = database ?? AppDatabase.instance;
 
-  static const name = 'Johanes';
+  static const johanes = SeedAccount(
+    name: 'Johanes',
+    email: 'johanes@gmail.com',
+    password: 'sirkular123',
+  );
+  static const jovan = SeedAccount(
+    name: 'Jovan',
+    email: 'jovan@gmail.com',
+    password: 'sirkular123',
+  );
+
+  static const accounts = [johanes, jovan];
+
   static const email = 'johanes@gmail.com';
   static const password = 'sirkular123';
 
@@ -20,13 +46,24 @@ class DummySeed {
   /// Makes sure Johanes exists and has the dummy data. Creates the account
   /// only if it is missing, so an existing account keeps its password. The
   /// data is written only when the account has no products yet.
-  Future<void> ensureSeeded({DateTime? now}) async {
+  /// Seeds every demo account.
+  Future<void> ensureAllSeeded({DateTime? now}) async {
+    for (final account in accounts) {
+      await ensureAccountSeeded(account, now: now);
+    }
+  }
+
+  /// Seeds Johanes only.
+  Future<void> ensureSeeded({DateTime? now}) =>
+      ensureAccountSeeded(johanes, now: now);
+
+  Future<void> ensureAccountSeeded(SeedAccount account, {DateTime? now}) async {
     final d = await _db.database;
     final existing = await d.query(
       'users',
       columns: ['id'],
       where: 'email = ?',
-      whereArgs: [email],
+      whereArgs: [account.email],
       limit: 1,
     );
 
@@ -35,9 +72,9 @@ class DummySeed {
       userId = existing.first['id'] as int;
     } else {
       final user = await UserRepository(database: _db).register(
-        name: name,
-        email: email,
-        password: password,
+        name: account.name,
+        email: account.email,
+        password: account.password,
       );
       userId = user.id;
     }
