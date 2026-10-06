@@ -72,7 +72,6 @@ Every number on the screens comes from a local SQLite database. The app seeds tw
 | Camera | `image_picker` |
 | AI | Google Gemini REST API (photo analysis and recipe ideas) |
 | Icons | 85 product icons, generated with GPT (see [`docs/icon-pack.md`](docs/icon-pack.md)) |
-| Demo video | Remotion (`DEMO/`) |
 
 ## Getting started
 
