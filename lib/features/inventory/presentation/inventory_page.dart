@@ -123,127 +123,150 @@ class _InventoryPageState extends State<InventoryPage> {
     final items = _visible;
 
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: Row(
-                children: [
-                  _RoundButton(
-                    icon: Icons.arrow_back_rounded,
-                    onTap: () => Navigator.of(context).maybePop(),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Inventory',
-                      textAlign: TextAlign.center,
-                      style: textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Row(
+                    children: [
+                      _RoundButton(
+                        icon: Icons.arrow_back_rounded,
+                        onTap: () => Navigator.of(context).maybePop(),
                       ),
-                    ),
-                  ),
-                  _RoundButton(
-                    icon: Icons.more_horiz_rounded,
-                    onTap: () {
-                      // TODO: inventory menu
-                    },
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) => setState(() => _query = value),
-                decoration: InputDecoration(
-                  hintText: 'Cari produk...',
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(999),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(999),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(999),
-                    borderSide: const BorderSide(color: AppColors.ink),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(
-              height: 52,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                children: [
-                  for (final category in InventoryData.categories)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ChoiceChip(
-                        label: Text(category),
-                        selected: _category == category,
-                        onSelected: (_) => setState(() => _category = category),
-                        selectedColor: AppColors.mint,
-                        backgroundColor: AppColors.surface,
-                        side: BorderSide.none,
-                        showCheckmark: false,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-              child: Text(
-                'Ketuk kartu untuk restok · centang untuk pilih',
-                style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
-              ),
-            ),
-            Expanded(
-              child: items.isEmpty
-                  ? Center(
-                      child: Text(
-                        'Produk tidak ditemukan',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: AppColors.muted,
+                      Expanded(
+                        child: Text(
+                          'Inventory',
+                          textAlign: TextAlign.center,
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
-                    )
-                  : GridView.count(
-                      crossAxisCount: 2,
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.66,
-                      children: [
-                        for (final item in items)
-                          _ItemCard(
-                            item: item,
-                            selected: _selected.contains(item.name),
-                            gradient: _gradientFor(_salesRank(item)),
-                            onSelect: () => _toggleSelected(item),
-                            onRestock: () => _openRestock(item),
-                          ),
-                      ],
+                      _RoundButton(
+                        icon: Icons.more_horiz_rounded,
+                        onTap: () {
+                          // TODO: inventory menu
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (value) => setState(() => _query = value),
+                    decoration: InputDecoration(
+                      hintText: 'Cari produk...',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: BorderSide.none,
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: BorderSide.none,
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(999),
+                        borderSide: const BorderSide(color: AppColors.ink),
+                      ),
                     ),
+                  ),
+                ),
+                SizedBox(
+                  height: 52,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                    children: [
+                      for (final category in InventoryData.categories)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: Text(category),
+                            selected: _category == category,
+                            onSelected: (_) =>
+                                setState(() => _category = category),
+                            selectedColor: AppColors.mint,
+                            backgroundColor: AppColors.surface,
+                            side: BorderSide.none,
+                            showCheckmark: false,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                  child: Text(
+                    'Ketuk kartu untuk restok · centang untuk pilih',
+                    style:
+                        textTheme.labelSmall?.copyWith(color: AppColors.muted),
+                  ),
+                ),
+                Expanded(
+                  child: items.isEmpty
+                      ? Center(
+                          child: Text(
+                            'Produk tidak ditemukan',
+                            style: textTheme.bodyMedium?.copyWith(
+                              color: AppColors.muted,
+                            ),
+                          ),
+                        )
+                      : GridView.count(
+                          crossAxisCount: 2,
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 0.66,
+                          children: [
+                            for (final item in items)
+                              _ItemCard(
+                                item: item,
+                                selected: _selected.contains(item.name),
+                                gradient: _gradientFor(_salesRank(item)),
+                                onSelect: () => _toggleSelected(item),
+                                onRestock: () => _openRestock(item),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          ),
+          // Floating buttons sit over the grid, no bar behind them.
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 12,
+            child: SafeArea(
+              top: false,
               child: Row(
                 children: [
-                  _RoundButton(
-                    icon: Icons.add_rounded,
-                    size: 56,
-                    onTap: _openAddItem,
+                  Material(
+                    color: Colors.white,
+                    shape: const CircleBorder(),
+                    elevation: 6,
+                    shadowColor: Colors.black.withValues(alpha: 0.3),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: _openAddItem,
+                      child: const SizedBox(
+                        width: 60,
+                        height: 60,
+                        child: Icon(Icons.add_rounded,
+                            color: AppColors.ink, size: 28),
+                      ),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -252,7 +275,8 @@ class _InventoryPageState extends State<InventoryPage> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.purple,
                         foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 56),
+                        minimumSize: const Size(0, 60),
+                        shape: const StadiumBorder(),
                       ),
                       icon: const Icon(Icons.auto_awesome, size: 18),
                       label: Text(
@@ -267,7 +291,8 @@ class _InventoryPageState extends State<InventoryPage> {
                   ElevatedButton.icon(
                     onPressed: _openPublish,
                     style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 56),
+                      minimumSize: const Size(0, 60),
+                      shape: const StadiumBorder(),
                     ),
                     icon: const Icon(Icons.storefront_outlined, size: 18),
                     label: const Text('Jual'),
@@ -275,8 +300,8 @@ class _InventoryPageState extends State<InventoryPage> {
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -430,12 +455,10 @@ class _RoundButton extends StatelessWidget {
   const _RoundButton({
     required this.icon,
     required this.onTap,
-    this.size = 44,
   });
 
   final IconData icon;
   final VoidCallback onTap;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -446,8 +469,8 @@ class _RoundButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: SizedBox(
-          width: size,
-          height: size,
+          width: 44,
+          height: 44,
           child: Icon(icon),
         ),
       ),
