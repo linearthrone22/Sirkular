@@ -1,3 +1,5 @@
+
+https://github.com/user-attachments/assets/a2f17d0c-360f-4e26-8449-f4dd4bf50028
 <p align="center">
   <img src="assets/images/logo.png" alt="Sirkular logo" width="140" />
 </p>
@@ -20,6 +22,10 @@
 ---
 
 ## Demo
+
+
+https://github.com/user-attachments/assets/d42e6f06-e9f2-4787-82a9-84520493a314
+
 
 [![Sirkular demo video](docs/media/demo-poster.png)](https://github.com/linearthrone22/Sirkular/releases/download/demo-v1.0/sirkular-demo.mp4)
 
