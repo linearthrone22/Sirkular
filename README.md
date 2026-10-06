@@ -21,9 +21,9 @@
 
 ## Demo
 
-[![Sirkular demo video](docs/media/demo-poster.png)](docs/media/sirkular-demo.mp4)
+[![Sirkular demo video](docs/media/demo-poster.png)](https://github.com/linearthrone22/Sirkular/releases/download/demo-v1.0/sirkular-demo.mp4)
 
-> Click the image to watch the full demo video (`docs/media/sirkular-demo.mp4`).
+> Click the image to watch the demo video. It is hosted on the [demo-v1.0 release](https://github.com/linearthrone22/Sirkular/releases/tag/demo-v1.0).
 
 ## What it does
 
@@ -145,7 +145,7 @@ lib/
 assets/
 ├── icons/products/    85 product icon PNGs
 └── images/            Logo
-docs/                  Icon pack brief, screenshots, demo video
+docs/                  Icon pack brief, screenshots, demo poster
 test/                  Unit and widget tests (in-memory database)
 ```
 
