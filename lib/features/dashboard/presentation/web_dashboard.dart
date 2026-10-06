@@ -1,20 +1,59 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/format/format.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/user_repository.dart';
-import '../data/dashboard_data.dart';
+import '../../inventory/presentation/inventory_page.dart';
+import '../data/dashboard_service.dart';
 import 'ai_screens.dart';
+import 'insights_page.dart';
 import 'mobile_dashboard.dart' show statusColor;
 import 'widgets/dashboard_charts.dart';
 import 'widgets/dashboard_widgets.dart';
 
-class WebDashboard extends StatelessWidget {
+class WebDashboard extends StatefulWidget {
   const WebDashboard({super.key, required this.user});
 
   final User user;
 
   @override
+  State<WebDashboard> createState() => _WebDashboardState();
+}
+
+class _WebDashboardState extends State<WebDashboard> {
+  final _service = DashboardService();
+  late Future<DashboardSnapshot> _future = _service.load(widget.user.id);
+
+  void _reload() {
+    setState(() => _future = _service.load(widget.user.id));
+  }
+
+  Future<void> _push(Widget page) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    _reload();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return FutureBuilder<DashboardSnapshot>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+                child: Text('Gagal memuat dashboard: ${snapshot.error}')),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        return _buildContent(context, snapshot.requireData);
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, DashboardSnapshot d) {
     return Scaffold(
       body: Row(
         children: [
@@ -25,29 +64,38 @@ class WebDashboard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _Header(user: user),
+                  _Header(
+                    user: widget.user,
+                    onInventory: () =>
+                        _push(InventoryPage(userId: widget.user.id)),
+                  ),
                   const SizedBox(height: 24),
                   _Row(
                     height: 300,
                     children: [
                       Expanded(
                         child: AiAlertBanner(
-                          onTap: () => openInsights(context),
+                          title: d.alertTitle ?? 'Semua aman hari ini',
+                          body: d.alertBody ??
+                              'Tidak ada peringatan baru dari AI.',
+                          onTap: () => _push(
+                            InsightsPage(userId: widget.user.id),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 16),
-                      const Expanded(
+                      Expanded(
                         flex: 2,
                         child: DashCard(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SectionTitle('Omnichannel Sales Performance'),
-                              SizedBox(height: 16),
+                              const SectionTitle(
+                                  'Omnichannel Sales Performance'),
+                              const SizedBox(height: 16),
                               Expanded(
-                                child: OmnichannelBarChart(
-                                  data: DashboardData.channelSales,
-                                ),
+                                child:
+                                    OmnichannelBarChart(data: d.channelSales),
                               ),
                             ],
                           ),
@@ -56,47 +104,48 @@ class WebDashboard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const Row(
+                  Row(
                     children: [
                       Expanded(
                         child: KpiCard(
-                          label: 'Total Revenue',
-                          value: DashboardData.totalRevenue,
+                          label: 'Pendapatan 30 Hari',
+                          value: rupiah(d.revenue30DaysIdr),
                           icon: Icons.account_balance_wallet_outlined,
                           color: AppColors.mintDeep,
                           badge: StatusBadge(
-                            text: '+12%',
+                            text: '+${d.revenueGrowthPct}%',
                             color: AppColors.mint,
                           ),
                         ),
                       ),
-                      SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: KpiCard(
                           label: 'Deadstock Saved',
-                          value: DashboardData.deadstockSaved,
+                          value: rupiah(d.deadstockSavedIdr),
                           icon: Icons.eco_outlined,
                           color: AppColors.mintDeep,
                           badge: StatusBadge(
-                            text: '+15%',
+                            text:
+                                '${d.deadstockDelta >= 0 ? '+' : ''}${d.deadstockDelta.round()} kg',
                             color: AppColors.mint,
                           ),
                         ),
                       ),
-                      SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: KpiCard(
                           label: 'Active Channels',
-                          value: DashboardData.activeChannels,
+                          value: '${d.activeChannels} Platform',
                           icon: Icons.hub_outlined,
                           color: AppColors.orange,
                         ),
                       ),
-                      SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: KpiCard(
                           label: 'AI Products Live',
-                          value: DashboardData.aiProductsLive,
+                          value: '${d.aiProductsLive}',
                           icon: Icons.auto_awesome,
                           color: AppColors.purple,
                         ),
@@ -104,7 +153,7 @@ class WebDashboard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const _Row(
+                  _Row(
                     height: 280,
                     children: [
                       Expanded(
@@ -115,36 +164,35 @@ class WebDashboard extends StatelessWidget {
                             children: [
                               Row(
                                 children: [
-                                  Expanded(
+                                  const Expanded(
                                     child: SectionTitle('Inventory Health'),
                                   ),
                                   StatusBadge(
-                                    text: '+15% Efficiency',
+                                    text: '+${d.efficiencyPct}% Efficiency',
                                     color: AppColors.mint,
                                   ),
                                 ],
                               ),
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               Expanded(
                                 child: InventoryHealthChart(
-                                  values: DashboardData.inventoryHealth,
+                                  values: d.inventoryHealth,
+                                  labels: d.healthDays,
                                 ),
                               ),
                             ],
                           ),
                         ),
                       ),
-                      SizedBox(width: 16),
+                      const SizedBox(width: 16),
                       Expanded(
                         child: DashCard(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SectionTitle('Waste Reduction Impact'),
-                              SizedBox(height: 24),
-                              WasteDonutChart(
-                                usedPercent: DashboardData.wasteUsedPercent,
-                              ),
+                              const SectionTitle('Waste Reduction Impact'),
+                              const SizedBox(height: 24),
+                              WasteDonutChart(usedPercent: d.wasteUsedPercent),
                             ],
                           ),
                         ),
@@ -152,13 +200,13 @@ class WebDashboard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  const DashCard(
+                  DashCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SectionTitle('Live Sync Orders'),
-                        SizedBox(height: 12),
-                        _LiveOrdersTable(orders: DashboardData.liveOrders),
+                        const SectionTitle('Live Sync Orders'),
+                        const SizedBox(height: 12),
+                        _LiveOrdersTable(orders: d.liveOrders),
                       ],
                     ),
                   ),
@@ -298,9 +346,10 @@ class _NavItem extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.user});
+  const _Header({required this.user, required this.onInventory});
 
   final User user;
+  final VoidCallback onInventory;
 
   @override
   Widget build(BuildContext context) {
@@ -322,6 +371,16 @@ class _Header extends StatelessWidget {
           ),
           icon: const Icon(Icons.auto_awesome, size: 18),
           label: const Text('Generate AI R&D'),
+        ),
+        const SizedBox(width: 12),
+        OutlinedButton.icon(
+          onPressed: onInventory,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.ink,
+            minimumSize: const Size(0, 48),
+          ),
+          icon: const Icon(Icons.inventory_2_outlined, size: 18),
+          label: const Text('Inventory'),
         ),
         const SizedBox(width: 12),
         UserAvatarMenu(user: user),

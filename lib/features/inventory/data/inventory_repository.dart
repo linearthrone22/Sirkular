@@ -17,6 +17,7 @@ class ItemRecord {
     required this.sellPriceIdr,
     required this.iconKey,
     required this.source,
+    this.soldLast30d = 0,
   });
 
   factory ItemRecord.fromRow(Map<String, Object?> row) {
@@ -31,6 +32,7 @@ class ItemRecord {
       sellPriceIdr: row['sell_price_idr'] as int?,
       iconKey: row['icon_key'] as String,
       source: row['source'] as String,
+      soldLast30d: (row['sold_30d'] as int?) ?? 0,
     );
   }
 
@@ -44,6 +46,9 @@ class ItemRecord {
   final int? sellPriceIdr;
   final String iconKey;
   final String source;
+
+  /// Units sold by "sale" movements in the last 30 days.
+  final int soldLast30d;
 }
 
 class NewItem {
@@ -141,29 +146,41 @@ class InventoryRepository {
     });
   }
 
-  /// Lists a user's products, optionally filtered by category or name.
+  /// Lists a user's products with their 30-day sales, filtered by category
+  /// or name. [now] is injectable for tests.
   Future<List<ItemRecord>> items(
     int userId, {
     String? category,
     String? query,
+    DateTime? now,
   }) async {
     final db = await _db;
-    final where = <String>['user_id = ?'];
-    final args = <Object?>[userId];
+    final since = (now ?? DateTime.now())
+        .subtract(const Duration(days: 30))
+        .toIso8601String();
+    final where = <String>['i.user_id = ?'];
+    final args = <Object?>[since, userId];
     if (category != null) {
-      where.add('category = ?');
+      where.add('i.category = ?');
       args.add(category);
     }
     final search = query?.trim().toLowerCase() ?? '';
     if (search.isNotEmpty) {
-      where.add('LOWER(name) LIKE ?');
+      where.add('LOWER(i.name) LIKE ?');
       args.add('%$search%');
     }
-    final rows = await db.query(
-      'inventory_items',
-      where: where.join(' AND '),
-      whereArgs: args,
-      orderBy: 'name COLLATE NOCASE',
+    final rows = await db.rawQuery(
+      '''
+      SELECT i.*,
+        COALESCE((
+          SELECT -SUM(m.delta) FROM stock_movements m
+          WHERE m.item_id = i.id AND m.reason = 'sale' AND m.created_at >= ?
+        ), 0) AS sold_30d
+      FROM inventory_items i
+      WHERE ${where.join(' AND ')}
+      ORDER BY i.name COLLATE NOCASE
+      ''',
+      args,
     );
     return rows.map(ItemRecord.fromRow).toList();
   }

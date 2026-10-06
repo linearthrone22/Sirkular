@@ -2,7 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-import '../../data/dashboard_data.dart';
+import '../../data/dashboard_service.dart';
 
 /// Stacked bars per day: Tokopedia (mint), Shopee (orange), POS (ink).
 class OmnichannelBarChart extends StatelessWidget {
@@ -103,16 +103,21 @@ class OmnichannelBarChart extends StatelessWidget {
 
 /// Smooth line for stock health over the week.
 class InventoryHealthChart extends StatelessWidget {
-  const InventoryHealthChart({super.key, required this.values});
+  const InventoryHealthChart({
+    super.key,
+    required this.values,
+    required this.labels,
+  });
 
   final List<double> values;
+  final List<String> labels;
 
   @override
   Widget build(BuildContext context) {
     final muted = Theme.of(context).textTheme.labelSmall?.copyWith(
           color: AppColors.muted,
         );
-    const days = DashboardData.weekdays;
+    final days = labels;
 
     return LineChart(
       LineChartData(

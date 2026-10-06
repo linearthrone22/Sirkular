@@ -2,11 +2,12 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/format/format.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/data/user_repository.dart';
 import '../../inventory/presentation/inventory_page.dart';
-import '../data/dashboard_data.dart';
-import '../data/platform_data.dart';
+import '../data/dashboard_repository.dart';
+import '../data/dashboard_service.dart';
 import 'insights_page.dart';
 import 'platform_analytics_page.dart';
 import 'widgets/dashboard_customize_sheet.dart';
@@ -23,291 +24,317 @@ class MobileDashboard extends StatefulWidget {
 }
 
 class _MobileDashboardState extends State<MobileDashboard> {
-  final Set<DashSection> _hidden = {};
+  final _service = DashboardService();
+  final _prefs = DashboardRepository();
+  late Future<DashboardSnapshot> _future = _service.load(widget.user.id);
 
-  bool _shown(DashSection section) => !_hidden.contains(section);
+  void _reload() {
+    setState(() => _future = _service.load(widget.user.id));
+  }
 
-  void _openCustomize() {
-    showDashboardCustomize(
+  Future<void> _openCustomize(DashboardSnapshot d) async {
+    await showDashboardCustomize(
       context,
-      hidden: _hidden,
-      onChanged: (section, visible) {
-        setState(() {
-          if (visible) {
-            _hidden.remove(section);
-          } else {
-            _hidden.add(section);
-          }
-        });
+      hidden: d.hidden,
+      onChanged: (section, visible) async {
+        await _prefs.setDashboardPref(
+          widget.user.id,
+          section.name,
+          visible: visible,
+        );
       },
     );
+    _reload();
   }
 
-  void _openPlatform(String name) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlatformAnalyticsPage(data: PlatformData.byName(name)),
-      ),
-    );
-  }
-
-  void _openInventory() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const InventoryPage()),
-    );
-  }
-
-  void _openInsights() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const InsightsPage()),
-    );
+  Future<void> _push(Widget page) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    _reload();
   }
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<DashboardSnapshot>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+                child: Text('Gagal memuat dashboard: ${snapshot.error}')),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        return _buildContent(context, snapshot.requireData);
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, DashboardSnapshot d) {
     final textTheme = Theme.of(context).textTheme;
     final firstName = widget.user.name.split(' ').first;
-    const days = DashboardData.channelSales;
+    bool shown(DashSection s) => !d.hidden.contains(s);
+
+    final target = d.revenueTargetIdr;
+    final progress = target == 0
+        ? 0.0
+        : (d.revenue30DaysIdr / target).clamp(0.0, 1.0).toDouble();
 
     return Scaffold(
       body: Stack(
         children: [
           SafeArea(
             bottom: false,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              children: [
-                Row(
-                  children: [
-                    Expanded(
+            child: RefreshIndicator(
+              onRefresh: () async => _reload(),
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Halo, $firstName',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: AppColors.muted,
+                              ),
+                            ),
+                            Text(
+                              'Dashboard',
+                              style: textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _IconCircle(
+                        icon: Icons.settings_outlined,
+                        onTap: () => _openCustomize(d),
+                      ),
+                      const SizedBox(width: 8),
+                      _IconCircle(
+                        icon: Icons.notifications_none_rounded,
+                        onTap: () {
+                          // TODO: notifications screen
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      UserAvatarMenu(user: widget.user),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  if (shown(DashSection.revenue)) ...[
+                    DashCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            'Halo, $firstName',
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: AppColors.muted,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'Pendapatan 30 Hari',
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    color: AppColors.muted,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              StatusBadge(
+                                text: '+${d.efficiencyPct}% Efisiensi',
+                                color: AppColors.mint,
+                              ),
+                            ],
                           ),
+                          const SizedBox(height: 10),
                           Text(
-                            'Dashboard',
+                            rupiah(d.revenue30DaysIdr),
                             style: textTheme.headlineMedium?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
                           ),
+                          const SizedBox(height: 16),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 8,
+                              color: AppColors.mint,
+                              backgroundColor: AppColors.border,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Target ${rupiah(target)} · ${(progress * 100).round()}% tercapai',
+                            style: textTheme.labelSmall?.copyWith(
+                              color: AppColors.muted,
+                            ),
+                          ),
                         ],
                       ),
                     ),
-                    _IconCircle(
-                      icon: Icons.settings_outlined,
-                      onTap: _openCustomize,
-                    ),
-                    const SizedBox(width: 8),
-                    _IconCircle(
-                      icon: Icons.notifications_none_rounded,
-                      onTap: () {
-                        // TODO: notifications screen
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    UserAvatarMenu(user: widget.user),
+                    const SizedBox(height: 16),
                   ],
-                ),
-                const SizedBox(height: 20),
-                if (_shown(DashSection.revenue)) ...[
-                  DashCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  if (shown(DashSection.metrics)) ...[
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 0.78,
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Pendapatan Bulan Ini',
-                                style: textTheme.bodyMedium?.copyWith(
-                                  color: AppColors.muted,
-                                ),
-                              ),
+                        MetricCard(
+                          label: 'Pesanan Tokopedia',
+                          value: '${d.tokopediaOrders}',
+                          icon: Icons.storefront_rounded,
+                          color: AppColors.mintDeep,
+                          delta: d.tokopediaDelta,
+                          trend: d.tokopediaTrend,
+                          onTap: () => _push(
+                            PlatformAnalyticsPage(
+                              userId: widget.user.id,
+                              platformKey: 'tokopedia',
                             ),
-                            const SizedBox(width: 8),
-                            const StatusBadge(
-                              text: DashboardData.efficiencyBadge,
-                              color: AppColors.mint,
+                          ),
+                        ),
+                        MetricCard(
+                          label: 'Pesanan Shopee',
+                          value: '${d.shopeeOrders}',
+                          icon: Icons.shopping_bag_outlined,
+                          color: AppColors.orange,
+                          delta: d.shopeeDelta,
+                          trend: d.shopeeTrend,
+                          onTap: () => _push(
+                            PlatformAnalyticsPage(
+                              userId: widget.user.id,
+                              platformKey: 'shopee',
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          DashboardData.totalRevenue,
-                          style: textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(999),
-                          child: const LinearProgressIndicator(
-                            value: 0.8,
-                            minHeight: 8,
-                            color: AppColors.mint,
-                            backgroundColor: AppColors.border,
-                          ),
+                        MetricCard(
+                          label: 'Deadstock Saved',
+                          value: '${d.deadstockKg.round()} kg',
+                          icon: Icons.eco_outlined,
+                          color: AppColors.mintDeep,
+                          delta: d.deadstockDelta.round(),
+                          trend: d.deadstockTrend,
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Target Rp 30.000.000 · 80% tercapai',
-                          style: textTheme.labelSmall?.copyWith(
-                            color: AppColors.muted,
-                          ),
+                        MetricCard(
+                          label: 'Sync Status',
+                          value: d.syncOk ? 'Synced' : 'Offline',
+                          icon: Icons.sync_rounded,
+                          color: AppColors.mintDeep,
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (_shown(DashSection.metrics)) ...[
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 0.78,
-                    children: [
-                      MetricCard(
-                        label: 'Pesanan Tokopedia',
-                        value: DashboardData.tokopediaOrders,
-                        icon: Icons.storefront_rounded,
-                        color: AppColors.mintDeep,
-                        delta: 2,
-                        trend: const [12, 18, 15, 22, 28, 31, 24],
-                        onTap: () => _openPlatform('Tokopedia'),
-                      ),
-                      MetricCard(
-                        label: 'Pesanan Shopee',
-                        value: DashboardData.shopeeOrders,
-                        icon: Icons.shopping_bag_outlined,
-                        color: AppColors.orange,
-                        delta: -3,
-                        trend: const [8, 10, 12, 14, 18, 22, 19],
-                        onTap: () => _openPlatform('Shopee'),
-                      ),
-                      const MetricCard(
-                        label: 'Deadstock Saved',
-                        value: DashboardData.deadstockKg,
-                        icon: Icons.eco_outlined,
-                        color: AppColors.mintDeep,
-                        delta: 2,
-                        trend: [4, 6, 5, 9, 8, 12, 15],
-                      ),
-                      const MetricCard(
-                        label: 'Sync Status',
-                        value: DashboardData.syncStatus,
-                        icon: Icons.sync_rounded,
-                        color: AppColors.mintDeep,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (_shown(DashSection.orders)) ...[
-                  OrdersCard(
-                    stats: const [
-                      OrderStat(
-                        value: DashboardData.tokopediaOrders,
-                        label: 'Tokopedia',
-                      ),
-                      OrderStat(
-                        value: DashboardData.shopeeOrders,
-                        label: 'Shopee',
-                      ),
-                      OrderStat(value: '14', label: 'Dikemas'),
-                      OrderStat(value: '3', label: 'Dikirim'),
-                    ],
-                    values: [for (final d in days) d.total],
-                    days: [for (final d in days) d.day],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (_shown(DashSection.stock)) ...[
-                  const StockStatusCard(
-                    segments: [
-                      StockSegment(
-                          label: 'In stock', value: 90, color: AppColors.ink),
-                      StockSegment(
-                          label: 'Low stock', value: 20, color: Colors.white),
-                      StockSegment(
-                        label: 'Out of stock',
-                        value: 8,
-                        color: AppColors.danger,
-                      ),
-                      StockSegment(
-                        label: 'Dead stock',
-                        value: 16,
-                        color: AppColors.mintDeep,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                if (_shown(DashSection.liveOrders)) ...[
-                  const SectionTitle('Live Orders'),
-                  const SizedBox(height: 12),
-                  for (final order in DashboardData.liveOrders.take(3)) ...[
-                    DashCard(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 16),
+                  ],
+                  if (shown(DashSection.orders) &&
+                      d.channelSales.isNotEmpty) ...[
+                    OrdersCard(
+                      stats: [
+                        OrderStat(
+                            value: '${d.tokopediaOrders}', label: 'Tokopedia'),
+                        OrderStat(value: '${d.shopeeOrders}', label: 'Shopee'),
+                        OrderStat(value: '${d.dikemasCount}', label: 'Dikemas'),
+                        OrderStat(value: '${d.dikirimCount}', label: 'Dikirim'),
+                      ],
+                      values: [for (final c in d.channelSales) c.total],
+                      days: [for (final c in d.channelSales) c.day],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (shown(DashSection.stock)) ...[
+                    StockStatusCard(
+                      segments: [
+                        StockSegment(
+                          label: 'In stock',
+                          value: d.stock.inStock,
+                          color: AppColors.ink,
+                        ),
+                        StockSegment(
+                          label: 'Low stock',
+                          value: d.stock.low,
+                          color: Colors.white,
+                        ),
+                        StockSegment(
+                          label: 'Out of stock',
+                          value: d.stock.out,
+                          color: AppColors.danger,
+                        ),
+                        StockSegment(
+                          label: 'Dead stock',
+                          value: d.stock.dead,
+                          color: AppColors.mintDeep,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  if (shown(DashSection.liveOrders)) ...[
+                    const SectionTitle('Live Orders'),
+                    const SizedBox(height: 12),
+                    for (final order in d.liveOrders.take(3)) ...[
+                      DashCard(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    order.item,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: textTheme.bodyMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${order.platform} · ${order.time}',
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: AppColors.muted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text(
-                                  order.item,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                                  order.total,
                                   style: textTheme.bodyMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${order.platform} · ${order.time}',
-                                  style: textTheme.bodySmall?.copyWith(
-                                    color: AppColors.muted,
-                                  ),
+                                const SizedBox(height: 4),
+                                StatusBadge(
+                                  text: order.status,
+                                  color: statusColor(order.status),
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                order.total,
-                                style: textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              StatusBadge(
-                                text: order.status,
-                                color: statusColor(order.status),
-                              ),
-                            ],
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                    ],
                   ],
+                  const SizedBox(height: 96),
                 ],
-                const SizedBox(height: 96),
-              ],
+              ),
             ),
           ),
-          // Floating buttons sit directly over the content, no bar behind them.
           Positioned(
             left: 16,
             right: 16,
@@ -316,9 +343,16 @@ class _MobileDashboardState extends State<MobileDashboard> {
               top: false,
               child: Row(
                 children: [
-                  Expanded(child: _InsightPill(onTap: _openInsights)),
+                  Expanded(
+                    child: _InsightPill(
+                      label: '${d.alertCount} AI Alerts',
+                      onTap: () => _push(InsightsPage(userId: widget.user.id)),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  _InventoryButton(onTap: _openInventory),
+                  _InventoryButton(
+                    onTap: () => _push(InventoryPage(userId: widget.user.id)),
+                  ),
                 ],
               ),
             ),
@@ -340,10 +374,11 @@ Color statusColor(String status) {
   }
 }
 
-/// Left pill of the bottom bar: dark glass pill with an AI orb, like the reference.
+/// Left pill of the bottom bar: dark glass pill with an AI orb.
 class _InsightPill extends StatelessWidget {
-  const _InsightPill({required this.onTap});
+  const _InsightPill({required this.label, required this.onTap});
 
+  final String label;
   final VoidCallback onTap;
 
   @override
@@ -381,7 +416,7 @@ class _InsightPill extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      DashboardData.aiAlertsCount,
+                      label,
                       style: textTheme.bodyMedium?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,

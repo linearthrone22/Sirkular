@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
-
-/// Sections of the mobile dashboard that the user can show or hide.
-enum DashSection { revenue, metrics, orders, stock, liveOrders }
+import '../../data/dashboard_service.dart';
 
 extension DashSectionLabel on DashSection {
   String get label {

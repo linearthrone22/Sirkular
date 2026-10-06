@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../data/insight_data.dart';
+import '../data/dashboard_repository.dart';
 
-/// Story-style viewer for the insight cards: full-screen slides, progress
-/// bars, tap or swipe to move, and auto-advance. Hold to pause.
+/// Story-style viewer for the insights in the database: full-screen slides,
+/// progress bars, tap or swipe to move, auto-advance, and hold to pause.
 class InsightsPage extends StatefulWidget {
-  const InsightsPage({super.key});
+  const InsightsPage({super.key, required this.userId});
+
+  final int userId;
 
   @override
   State<InsightsPage> createState() => _InsightsPageState();
@@ -16,9 +18,12 @@ class _InsightsPageState extends State<InsightsPage>
     with SingleTickerProviderStateMixin {
   static const _slideDuration = Duration(seconds: 6);
 
+  final _repository = DashboardRepository();
+  late final Future<List<InsightRecord>> _future;
+
   final _pageController = PageController();
-  final _items = InsightData.items;
   int _index = 0;
+  List<InsightRecord> _items = const [];
 
   late final AnimationController _progress = AnimationController(
     vsync: this,
@@ -27,10 +32,24 @@ class _InsightsPageState extends State<InsightsPage>
       if (status == AnimationStatus.completed) _next();
     });
 
+  Future<List<InsightRecord>> _load() async {
+    final items = await _repository.insights(widget.userId);
+    if (mounted) {
+      setState(() => _items = items);
+      if (items.isNotEmpty) _markRead(items.first);
+      _progress.forward();
+    }
+    return items;
+  }
+
+  void _markRead(InsightRecord item) {
+    _repository.markInsightRead(item.id);
+  }
+
   @override
   void initState() {
     super.initState();
-    _progress.forward();
+    _future = _load();
   }
 
   @override
@@ -42,6 +61,7 @@ class _InsightsPageState extends State<InsightsPage>
 
   void _onPageChanged(int index) {
     setState(() => _index = index);
+    _markRead(_items[index]);
     _progress
       ..stop()
       ..forward(from: 0);
@@ -59,7 +79,7 @@ class _InsightsPageState extends State<InsightsPage>
   }
 
   void _next() {
-    if (_index == _items.length - 1) {
+    if (_index >= _items.length - 1) {
       Navigator.of(context).maybePop();
       return;
     }
@@ -75,6 +95,27 @@ class _InsightsPageState extends State<InsightsPage>
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<List<InsightRecord>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: CircularProgressIndicator(color: Colors.white)),
+          );
+        }
+        if (_items.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Insights')),
+            body: const Center(child: Text('Belum ada insight.')),
+          );
+        }
+        return _buildViewer(context);
+      },
+    );
+  }
+
+  Widget _buildViewer(BuildContext context) {
     final current = _items[_index];
 
     return Scaffold(
@@ -182,7 +223,8 @@ class _InsightsPageState extends State<InsightsPage>
                       // TODO: run the insight's action
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('${current.action} — segera hadir'),
+                          content:
+                              Text('${current.actionLabel} — segera hadir'),
                         ),
                       );
                     },
@@ -195,7 +237,7 @@ class _InsightsPageState extends State<InsightsPage>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            current.action,
+                            current.actionLabel,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleSmall
@@ -263,7 +305,7 @@ class _ProgressSegment extends StatelessWidget {
 class _InsightSlide extends StatelessWidget {
   const _InsightSlide({required this.insight});
 
-  final Insight insight;
+  final InsightRecord insight;
 
   @override
   Widget build(BuildContext context) {
@@ -292,7 +334,7 @@ class _InsightSlide extends StatelessWidget {
               color: style.fg.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(22),
             ),
-            child: Icon(insight.icon, color: style.fg, size: 36),
+            child: Icon(_iconFor(insight.category), color: style.fg, size: 36),
           ),
           const Spacer(),
           Text(
@@ -327,6 +369,25 @@ class _InsightSlide extends StatelessWidget {
   }
 }
 
+IconData _iconFor(String category) {
+  switch (category) {
+    case 'Stok':
+      return Icons.inventory_2_outlined;
+    case 'AI R&D':
+      return Icons.auto_awesome;
+    case 'Penjualan':
+      return Icons.trending_up_rounded;
+    case 'Iklan':
+      return Icons.campaign_outlined;
+    case 'Sirkular':
+      return Icons.eco_outlined;
+    case 'Pelanggan':
+      return Icons.chat_bubble_outline_rounded;
+    default:
+      return Icons.lightbulb_outline_rounded;
+  }
+}
+
 class _SlideStyle {
   const _SlideStyle(this.colors, this.fg);
 
@@ -334,7 +395,7 @@ class _SlideStyle {
   final Color fg;
 }
 
-_SlideStyle _styleFor(Insight insight) {
+_SlideStyle _styleFor(InsightRecord insight) {
   // Purple is reserved for AI, so only the AI R&D insight uses it.
   if (insight.category == 'AI R&D') {
     return const _SlideStyle(
@@ -343,20 +404,20 @@ _SlideStyle _styleFor(Insight insight) {
     );
   }
   switch (insight.tone) {
-    case InsightTone.alert:
+    case 'alert':
       return const _SlideStyle(
         [Color(0xFFFFD9B0), AppColors.orange],
         AppColors.ink,
       );
-    case InsightTone.info:
-      return const _SlideStyle(
-        [AppColors.ink, Color(0xFF3A3A3A)],
-        Colors.white,
-      );
-    case InsightTone.success:
+    case 'success':
       return const _SlideStyle(
         [AppColors.mint, Color(0xFFBDF2DC)],
         AppColors.ink,
+      );
+    default:
+      return const _SlideStyle(
+        [AppColors.ink, Color(0xFF3A3A3A)],
+        Colors.white,
       );
   }
 }

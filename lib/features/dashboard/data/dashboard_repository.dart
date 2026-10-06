@@ -120,6 +120,7 @@ class DashboardRepository {
     required String body,
     required String actionLabel,
     String source = 'rule',
+    String? createdAt,
   }) async {
     final db = await _db;
     return db.insert('insights', {
@@ -130,7 +131,7 @@ class DashboardRepository {
       'body': body,
       'action_label': actionLabel,
       'source': source,
-      'created_at': AppDatabase.now(),
+      'created_at': createdAt ?? AppDatabase.now(),
     });
   }
 
@@ -395,5 +396,126 @@ class DashboardRepository {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  // Business KPIs: one value per metric per day.
+
+  Future<void> setKpi(
+    int userId,
+    String day,
+    String metric,
+    double value,
+  ) async {
+    final db = await _db;
+    await db.insert(
+      'business_kpis',
+      {'user_id': userId, 'day': day, 'metric': metric, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Value of [metric] on [day], or null if none was recorded that day.
+  Future<double?> kpiOn(int userId, String day, String metric) async {
+    final db = await _db;
+    final rows = await db.query(
+      'business_kpis',
+      columns: ['value'],
+      where: 'user_id = ? AND day = ? AND metric = ?',
+      whereArgs: [userId, day, metric],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : (rows.first['value'] as num).toDouble();
+  }
+
+  /// Most recent value of [metric], or null if none was ever recorded.
+  Future<double?> latestKpi(int userId, String metric) async {
+    final db = await _db;
+    final rows = await db.query(
+      'business_kpis',
+      columns: ['value'],
+      where: 'user_id = ? AND metric = ?',
+      whereArgs: [userId, metric],
+      orderBy: 'day DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : (rows.first['value'] as num).toDouble();
+  }
+
+  /// Values of [metric] for the last [days] days, oldest first.
+  Future<List<double>> kpiSeries(
+    int userId,
+    String metric, {
+    int days = 7,
+  }) async {
+    final db = await _db;
+    final rows = await db.query(
+      'business_kpis',
+      columns: ['value'],
+      where: 'user_id = ? AND metric = ?',
+      whereArgs: [userId, metric],
+      orderBy: 'day DESC',
+      limit: days,
+    );
+    return [
+      for (final r in rows.reversed) (r['value'] as num).toDouble(),
+    ];
+  }
+
+  // Revenue
+
+  /// Sum of platform revenue from [fromDay] (inclusive) to today.
+  Future<int> revenueSince(int userId, String fromDay) async {
+    final db = await _db;
+    final rows = await db.rawQuery(
+      'SELECT COALESCE(SUM(revenue_idr), 0) AS total FROM platform_daily_stats '
+      'WHERE user_id = ? AND day >= ?',
+      [userId, fromDay],
+    );
+    return (rows.first['total'] as num).toInt();
+  }
+
+  // Platform time series: retention by week and busiest hours.
+
+  Future<void> setSeriesPoint(
+    int userId,
+    String platform, {
+    required String series,
+    required int position,
+    required String label,
+    required double value,
+  }) async {
+    final db = await _db;
+    await db.insert(
+      'platform_series',
+      {
+        'user_id': userId,
+        'platform': platform,
+        'series': series,
+        'position': position,
+        'label': label,
+        'value': value,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// Points of one series, in position order.
+  Future<List<MapEntry<String, double>>> seriesPoints(
+    int userId,
+    String platform,
+    String series,
+  ) async {
+    final db = await _db;
+    final rows = await db.query(
+      'platform_series',
+      columns: ['label', 'value'],
+      where: 'user_id = ? AND platform = ? AND series = ?',
+      whereArgs: [userId, platform, series],
+      orderBy: 'position',
+    );
+    return [
+      for (final r in rows)
+        MapEntry(r['label'] as String, (r['value'] as num).toDouble()),
+    ];
   }
 }

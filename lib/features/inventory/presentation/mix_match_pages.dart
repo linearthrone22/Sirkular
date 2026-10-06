@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/format/format.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../dashboard/presentation/widgets/dashboard_widgets.dart';
 import '../data/inventory_data.dart';
 import '../data/recipe_data.dart';
+import '../data/recipe_repository.dart';
 
 /// Full-screen loading with a pulsing AI spark and cycling status text.
+/// Saves the ideas to SQLite, then opens the results.
 class MixMatchLoadingPage extends StatefulWidget {
-  const MixMatchLoadingPage({super.key, required this.items});
+  const MixMatchLoadingPage({
+    super.key,
+    required this.userId,
+    required this.items,
+  });
 
+  final int userId;
   final List<InventoryItem> items;
 
   @override
@@ -17,6 +25,8 @@ class MixMatchLoadingPage extends StatefulWidget {
 
 class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
     with SingleTickerProviderStateMixin {
+  final _recipes = RecipeRepository();
+
   late final AnimationController _pulse = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
@@ -27,7 +37,7 @@ class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
   @override
   void initState() {
     super.initState();
-    _runSteps();
+    _run();
   }
 
   @override
@@ -36,19 +46,48 @@ class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
     super.dispose();
   }
 
-  Future<void> _runSteps() async {
-    for (var i = 0; i < RecipeData.loadingMessages.length; i++) {
-      if (!mounted) return;
-      setState(() => _step = i);
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-    }
-    if (!mounted) return;
-    // TODO: replace the timer with the real Gemini response.
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => MixMatchResultsPage(items: widget.items),
-      ),
+  Future<void> _run() async {
+    final sourceIds = [for (final i in widget.items) i.id];
+    final requestId = await _recipes.startRequest(
+      widget.userId,
+      kind: 'mix_match',
+      input: {'items': sourceIds},
     );
+    try {
+      for (var i = 0; i < RecipeData.loadingMessages.length; i++) {
+        if (!mounted) return;
+        setState(() => _step = i);
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+      }
+
+      // TODO: replace RecipeData.ideas with the Gemini response.
+      final recipeIds = await _recipes.saveRecipes(
+        widget.userId,
+        requestId: requestId,
+        sourceItemIds: sourceIds,
+        drafts: [for (final idea in RecipeData.ideas) idea.toDraft()],
+      );
+      await _recipes
+          .completeRequest(requestId, output: {'recipeIds': recipeIds});
+
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => MixMatchResultsPage(
+            userId: widget.userId,
+            recipeIds: recipeIds,
+            sourceNames: [for (final i in widget.items) i.name],
+          ),
+        ),
+      );
+    } catch (e) {
+      await _recipes.failRequest(requestId, error: '$e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal membuat resep: $e')),
+      );
+      Navigator.of(context).maybePop();
+    }
   }
 
   @override
@@ -111,16 +150,23 @@ class _MixMatchLoadingPageState extends State<MixMatchLoadingPage>
   }
 }
 
-/// Three product ideas built from the selected ingredients.
+/// The saved ideas for one request, loaded from SQLite.
 class MixMatchResultsPage extends StatelessWidget {
-  const MixMatchResultsPage({super.key, required this.items});
+  const MixMatchResultsPage({
+    super.key,
+    required this.userId,
+    required this.recipeIds,
+    required this.sourceNames,
+  });
 
-  final List<InventoryItem> items;
+  final int userId;
+  final List<int> recipeIds;
+  final List<String> sourceNames;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final sources = items.map((i) => i.name).join(', ');
+    final recipes = RecipeRepository();
 
     return Scaffold(
       body: SafeArea(
@@ -129,7 +175,7 @@ class MixMatchResultsPage extends StatelessWidget {
           children: [
             Row(
               children: [
-                _BackButton(),
+                const _BackButton(),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
@@ -143,20 +189,41 @@ class MixMatchResultsPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Dari ${items.length} bahan: $sources',
+              'Dari ${sourceNames.length} bahan: ${sourceNames.join(', ')}',
               style: textTheme.bodySmall?.copyWith(color: AppColors.muted),
             ),
             const SizedBox(height: 16),
-            for (final idea in RecipeData.ideas) ...[
-              _IdeaCard(
-                idea: idea,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                      builder: (_) => RecipeDetailPage(idea: idea)),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
+            FutureBuilder<List<RecipeDetail?>>(
+              future:
+                  Future.wait([for (final id in recipeIds) recipes.recipe(id)]),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                return Column(
+                  children: [
+                    for (final detail in snapshot.requireData)
+                      if (detail != null) ...[
+                        _IdeaCard(
+                          detail: detail,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => RecipeDetailPage(
+                                userId: userId,
+                                recipeId: detail.recipe.id,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                  ],
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -165,15 +232,16 @@ class MixMatchResultsPage extends StatelessWidget {
 }
 
 class _IdeaCard extends StatelessWidget {
-  const _IdeaCard({required this.idea, required this.onTap});
+  const _IdeaCard({required this.detail, required this.onTap});
 
-  final RecipeIdea idea;
+  final RecipeDetail detail;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final easy = idea.difficulty == 'Mudah';
+    final recipe = detail.recipe;
+    final easy = recipe.difficulty == 'Mudah';
 
     return InkWell(
       borderRadius: BorderRadius.circular(24),
@@ -192,19 +260,19 @@ class _IdeaCard extends StatelessWidget {
                     color: AppColors.mintSoft,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: Icon(idea.icon, color: AppColors.ink),
+                  child: Icon(iconForKey(recipe.iconKey), color: AppColors.ink),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    idea.name,
+                    recipe.name,
                     style: textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
                 StatusBadge(
-                  text: 'Kesulitan: ${idea.difficulty}',
+                  text: 'Kesulitan: ${recipe.difficulty}',
                   color: easy ? AppColors.mint : AppColors.orange,
                 ),
               ],
@@ -212,11 +280,12 @@ class _IdeaCard extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _Metric(label: 'HPP', value: idea.hpp),
-                _Metric(label: 'Harga jual', value: idea.sellPrice),
+                _Metric(label: 'HPP', value: rupiah(recipe.hppIdr)),
+                _Metric(
+                    label: 'Harga jual', value: rupiah(recipe.sellPriceIdr)),
                 _Metric(
                   label: 'Potensi profit',
-                  value: idea.profit,
+                  value: rupiah(recipe.profitIdr),
                   highlight: true,
                 ),
               ],
@@ -272,22 +341,34 @@ class _Metric extends StatelessWidget {
   }
 }
 
-/// Step-by-step recipe with the main action at the bottom.
+/// One saved idea with its steps and the main action.
 class RecipeDetailPage extends StatelessWidget {
-  const RecipeDetailPage({super.key, required this.idea});
+  const RecipeDetailPage({
+    super.key,
+    required this.userId,
+    required this.recipeId,
+  });
 
-  final RecipeIdea idea;
+  final int userId;
+  final int recipeId;
 
-  void _saveToInventory(BuildContext context) {
+  Future<void> _saveToInventory(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
-    // Pop detail, results, and the inventory's loading path back to inventory.
-    Navigator.of(context)
+    final navigator = Navigator.of(context);
+    final name = await _name();
+    await RecipeRepository().saveRecipeToInventory(userId, recipeId);
+    // Pop detail, results, and back to the inventory.
+    navigator
       ..pop()
       ..pop();
     messenger.showSnackBar(
-      SnackBar(
-          content: Text('${idea.name} disimpan ke Inventory & siap dijual')),
+      SnackBar(content: Text('$name disimpan ke Inventory & siap dijual')),
     );
+  }
+
+  Future<String> _name() async {
+    final detail = await RecipeRepository().recipe(recipeId);
+    return detail?.recipe.name ?? 'Produk';
   }
 
   @override
@@ -295,106 +376,135 @@ class RecipeDetailPage extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Scaffold(
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-          child: ElevatedButton.icon(
-            onPressed: () => _saveToInventory(context),
-            icon: const Icon(Icons.inventory_2_outlined, size: 18),
-            label: const Text('Simpan ke Inventory & Siap Jual'),
-          ),
-        ),
-      ),
-      body: SafeArea(
-        bottom: false,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          children: [
-            Row(
-              children: [
-                _BackButton(),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    idea.name,
-                    style: textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            DashCard(
-              child: Row(
-                children: [
-                  _Metric(label: 'HPP', value: idea.hpp),
-                  _Metric(label: 'Harga jual', value: idea.sellPrice),
-                  _Metric(
-                    label: 'Profit',
-                    value: idea.profit,
-                    highlight: true,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            const SectionTitle('Bahan'),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final ingredient in idea.ingredients)
-                  Chip(
-                    label: Text(ingredient),
-                    side: BorderSide.none,
-                    backgroundColor: AppColors.surface,
-                  ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            const SectionTitle('Langkah pembuatan'),
-            const SizedBox(height: 10),
-            for (var i = 0; i < idea.steps.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: DashCard(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      body: FutureBuilder<RecipeDetail?>(
+        future: RecipeRepository().recipe(recipeId),
+        builder: (context, snapshot) {
+          final detail = snapshot.data;
+          if (detail == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final recipe = detail.recipe;
+          return Column(
+            children: [
+              Expanded(
+                child: SafeArea(
+                  bottom: false,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
                     children: [
-                      CircleAvatar(
-                        radius: 14,
-                        backgroundColor: AppColors.ink,
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                      Row(
+                        children: [
+                          const _BackButton(),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              recipe.name,
+                              style: textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      DashCard(
+                        child: Row(
+                          children: [
+                            _Metric(label: 'HPP', value: rupiah(recipe.hppIdr)),
+                            _Metric(
+                              label: 'Harga jual',
+                              value: rupiah(recipe.sellPriceIdr),
+                            ),
+                            _Metric(
+                              label: 'Profit',
+                              value: rupiah(recipe.profitIdr),
+                              highlight: true,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      const SectionTitle('Bahan'),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final ingredient in detail.ingredients)
+                            Chip(
+                              label: Text(ingredient),
+                              side: BorderSide.none,
+                              backgroundColor: AppColors.surface,
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      const SectionTitle('Langkah pembuatan'),
+                      const SizedBox(height: 10),
+                      for (var i = 0; i < detail.steps.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: DashCard(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 14,
+                                  backgroundColor: AppColors.ink,
+                                  child: Text(
+                                    '${i + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    detail.steps[i],
+                                    style: textTheme.bodyMedium
+                                        ?.copyWith(height: 1.5),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          idea.steps[i],
-                          style: textTheme.bodyMedium?.copyWith(height: 1.5),
-                        ),
-                      ),
                     ],
                   ),
                 ),
               ),
-          ],
-        ),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: ElevatedButton.icon(
+                    onPressed: recipe.status == 'saved'
+                        ? null
+                        : () => _saveToInventory(context),
+                    icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                    label: Text(
+                      recipe.status == 'saved'
+                          ? 'Sudah ada di Inventory'
+                          : 'Simpan ke Inventory & Siap Jual',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
 class _BackButton extends StatelessWidget {
+  const _BackButton();
+
   @override
   Widget build(BuildContext context) {
     return Material(

@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
-import '../data/dashboard_data.dart';
 
 /// Opens the camera on mobile (gallery on web) and runs the AI analysis.
 Future<void> startPhotoAnalysis(BuildContext context) async {
@@ -34,7 +33,7 @@ void openInsights(BuildContext context, {String? message}) {
   Navigator.of(context).push(
     MaterialPageRoute(
       builder: (_) => AiInsightsPage(
-        message: message ?? DashboardData.insightHeadline,
+        message: message ?? _insightHeadline,
       ),
     ),
   );
@@ -59,8 +58,7 @@ class _AiProcessingPageState extends State<AiProcessingPage> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-          builder: (_) =>
-              const AiInsightsPage(message: DashboardData.analysisResult),
+          builder: (_) => const AiInsightsPage(message: _analysisResult),
         ),
       );
     });
@@ -217,3 +215,9 @@ class _RoundIconButton extends StatelessWidget {
     );
   }
 }
+
+const _insightHeadline =
+    'Bulan ini, AI berhasil menyelamatkan 15kg bahan baku menjadi margin profit tambahan Rp 450.000.';
+
+const _analysisResult =
+    'AI menemukan 3 resep turunan dari bahan Anda: Muffin Roti Sisa, Crumble Roti, dan Pudding Roti. Potensi profit Rp 350.000.';

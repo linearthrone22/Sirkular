@@ -199,6 +199,31 @@ const migrations = <Migration>[
     )
     ''',
   ]),
+
+  // Migration 3: business KPIs per day and platform time series
+  // (retention by week, busiest hours).
+  Migration(3, [
+    '''
+    CREATE TABLE business_kpis (
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      day     TEXT    NOT NULL,
+      metric  TEXT    NOT NULL,
+      value   REAL    NOT NULL,
+      PRIMARY KEY (user_id, day, metric)
+    )
+    ''',
+    '''
+    CREATE TABLE platform_series (
+      user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform  TEXT    NOT NULL,
+      series    TEXT    NOT NULL CHECK (series IN ('retention', 'peak_hour')),
+      position  INTEGER NOT NULL,
+      label     TEXT    NOT NULL,
+      value     REAL    NOT NULL,
+      PRIMARY KEY (user_id, platform, series, position)
+    )
+    ''',
+  ]),
 ];
 
 /// The version the app opens the database at.

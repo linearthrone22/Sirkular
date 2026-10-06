@@ -12,7 +12,8 @@ class AppDatabase {
       : _factory = factory,
         _path = path;
 
-  static final AppDatabase instance = AppDatabase._();
+  /// Replaceable so tests can point the whole app at an in-memory database.
+  static AppDatabase instance = AppDatabase._();
 
   /// Opens a database at [path] using [factory], for example an in-memory
   /// database in tests.

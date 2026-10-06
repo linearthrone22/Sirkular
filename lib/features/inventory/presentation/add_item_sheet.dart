@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
+import '../data/inventory_repository.dart';
 
 /// Result of reading a photo: the fields the form fills in.
 class ItemDraft {
@@ -22,6 +23,7 @@ class ItemDraft {
 }
 
 /// Bottom sheet to add an item manually or fill it from a photo with AI.
+/// Pops with a [NewItem] for the caller to save.
 class AddItemSheet extends StatefulWidget {
   const AddItemSheet({super.key});
 
@@ -89,29 +91,26 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    final digits = _priceController.text.replaceAll(RegExp(r'[^0-9]'), '');
     Navigator.of(context).pop(
-      InventoryItem(
+      NewItem(
         name: _nameController.text.trim(),
         category: _category,
-        price: _priceController.text.trim().isEmpty
-            ? 'Rp 0'
-            : _priceController.text.trim(),
         stock: int.tryParse(_stockController.text.trim()) ?? 0,
-        unit: 'pcs',
-        icon: _iconFor(_category),
-        sold30d: 0,
+        priceIdr: int.tryParse(digits) ?? 0,
+        iconKey: _iconKeyFor(_category),
       ),
     );
   }
 
-  IconData _iconFor(String category) {
+  String _iconKeyFor(String category) {
     switch (category) {
       case 'Bahan':
-        return Icons.grain;
+        return 'grain';
       case 'Kemasan':
-        return Icons.inventory_2_outlined;
+        return 'box';
       default:
-        return Icons.bakery_dining_outlined;
+        return 'bakery';
     }
   }
 

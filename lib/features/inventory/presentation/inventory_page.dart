@@ -2,24 +2,28 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
+import '../data/inventory_repository.dart';
 import 'add_item_sheet.dart';
 import 'mix_match_pages.dart';
 import 'publish_sheet.dart';
 import 'restock_sheet.dart';
 
-/// Product grid. Tap a card to restock, tick the checkbox to select.
-/// Cards are shaded by sales: best sellers mint, slow movers faded grey.
+/// Product grid backed by SQLite. Tap a card to restock, tick the checkbox
+/// to select. Cards are shaded by sales: best sellers mint, slow movers grey.
 class InventoryPage extends StatefulWidget {
-  const InventoryPage({super.key});
+  const InventoryPage({super.key, required this.userId});
+
+  final int userId;
 
   @override
   State<InventoryPage> createState() => _InventoryPageState();
 }
 
 class _InventoryPageState extends State<InventoryPage> {
+  final _inventory = InventoryRepository();
   final _searchController = TextEditingController();
-  late final List<InventoryItem> _items = List.of(InventoryData.items);
-  final Set<String> _selected = {};
+  final Set<int> _selected = {};
+  late Future<List<InventoryItem>> _future = _load();
   String _query = '';
   String _category = InventoryData.categories.first;
 
@@ -29,9 +33,18 @@ class _InventoryPageState extends State<InventoryPage> {
     super.dispose();
   }
 
-  List<InventoryItem> get _visible {
+  Future<List<InventoryItem>> _load() async {
+    final records = await _inventory.items(widget.userId);
+    return [for (final r in records) InventoryItem.fromRecord(r)];
+  }
+
+  void _reload() {
+    setState(() => _future = _load());
+  }
+
+  List<InventoryItem> _visible(List<InventoryItem> all) {
     final query = _query.toLowerCase();
-    return _items.where((item) {
+    return all.where((item) {
       final matchesCategory =
           _category == 'Semua' || item.category == _category;
       final matchesQuery = item.name.toLowerCase().contains(query);
@@ -39,14 +52,10 @@ class _InventoryPageState extends State<InventoryPage> {
     }).toList();
   }
 
-  List<InventoryItem> get _picked =>
-      _items.where((i) => _selected.contains(i.name)).toList();
-
   /// 0 for the best seller, 1 for the slowest. Based on all items.
-  double _salesRank(InventoryItem item) {
-    final ranked = List.of(_items)
-      ..sort((a, b) => b.sold30d.compareTo(a.sold30d));
-    final index = ranked.indexWhere((i) => i.name == item.name);
+  double _salesRank(List<InventoryItem> all, InventoryItem item) {
+    final ranked = List.of(all)..sort((a, b) => b.sold30d.compareTo(a.sold30d));
+    final index = ranked.indexWhere((i) => i.id == item.id);
     if (ranked.length <= 1) return 0;
     return index / (ranked.length - 1);
   }
@@ -59,250 +68,309 @@ class _InventoryPageState extends State<InventoryPage> {
 
   void _toggleSelected(InventoryItem item) {
     setState(() {
-      if (!_selected.remove(item.name)) _selected.add(item.name);
+      if (!_selected.remove(item.id)) _selected.add(item.id);
     });
   }
 
-  Future<void> _openRestock(InventoryItem item) async {
+  List<InventoryItem> _picked(List<InventoryItem> all) =>
+      all.where((i) => _selected.contains(i.id)).toList();
+
+  Future<void> _restock(InventoryItem item) async {
     final newStock = await showModalBottomSheet<int>(
       context: context,
       showDragHandle: true,
       builder: (_) => RestockSheet(item: item),
     );
-    if (newStock == null) return;
-    setState(() {
-      final index = _items.indexWhere((i) => i.name == item.name);
-      _items[index] = item.copyWithStock(newStock);
-    });
+    if (newStock == null || newStock == item.stock) return;
+    await _inventory.adjustStock(
+      item.id,
+      newStock - item.stock,
+      reason: StockReason.restock,
+      note: newStock > item.stock ? 'Restok manual' : 'Koreksi stok manual',
+    );
+    _reload();
   }
 
-  Future<void> _openAddItem() async {
-    final item = await showModalBottomSheet<InventoryItem>(
+  Future<void> _addItem() async {
+    final item = await showModalBottomSheet<NewItem>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => const AddItemSheet(),
     );
     if (item == null) return;
-    setState(() => _items.add(item));
+    await _inventory.addItem(widget.userId, item);
+    _reload();
   }
 
-  void _openMixMatch() {
-    if (_selected.isEmpty) {
+  Future<void> _openMixMatch(List<InventoryItem> all) async {
+    final picked = _picked(all);
+    if (picked.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Centang bahan dulu untuk dicampur.')),
       );
       return;
     }
-    Navigator.of(context).push(
+    await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => MixMatchLoadingPage(items: _picked),
+        builder: (_) =>
+            MixMatchLoadingPage(userId: widget.userId, items: picked),
       ),
     );
+    _reload();
   }
 
-  Future<void> _openPublish() async {
-    if (_selected.isEmpty) {
+  Future<void> _openPublish(List<InventoryItem> all) async {
+    final picked = _picked(all);
+    if (picked.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Centang produk yang akan dijual.')),
       );
       return;
     }
-    final published = await showModalBottomSheet<bool>(
+    final platforms = await showModalBottomSheet<Set<String>>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => PublishSheet(items: _picked),
+      builder: (_) => PublishSheet(items: picked),
     );
-    if (published == true) setState(_selected.clear);
+    if (platforms == null || platforms.isEmpty) return;
+
+    for (final item in picked) {
+      for (final name in platforms) {
+        final key = _platformKey(name);
+        await _inventory.setListing(
+          item.id,
+          key,
+          status: 'live',
+          externalId: 'SKU-${item.id}-$key',
+        );
+      }
+    }
+    setState(_selected.clear);
+    _reload();
+  }
+
+  String _platformKey(String name) {
+    switch (name) {
+      case 'Shopee':
+        return 'shopee';
+      case 'TikTok Shop':
+        return 'tiktok';
+      default:
+        return 'tokopedia';
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final items = _visible;
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          SafeArea(
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Row(
-                    children: [
-                      _RoundButton(
-                        icon: Icons.arrow_back_rounded,
-                        onTap: () => Navigator.of(context).maybePop(),
-                      ),
-                      Expanded(
-                        child: Text(
-                          'Inventory',
-                          textAlign: TextAlign.center,
-                          style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+    return FutureBuilder<List<InventoryItem>>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(
+                child: Text('Gagal memuat inventory: ${snapshot.error}')),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final all = snapshot.requireData;
+        final items = _visible(all);
+
+        return Scaffold(
+          body: Stack(
+            children: [
+              SafeArea(
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Row(
+                        children: [
+                          _RoundButton(
+                            icon: Icons.arrow_back_rounded,
+                            onTap: () => Navigator.of(context).maybePop(),
                           ),
-                        ),
-                      ),
-                      _RoundButton(
-                        icon: Icons.more_horiz_rounded,
-                        onTap: () {
-                          // TODO: inventory menu
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  child: TextField(
-                    controller: _searchController,
-                    onChanged: (value) => setState(() => _query = value),
-                    decoration: InputDecoration(
-                      hintText: 'Cari produk...',
-                      prefixIcon: const Icon(Icons.search_rounded),
-                      filled: true,
-                      fillColor: AppColors.surface,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: BorderSide.none,
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(999),
-                        borderSide: const BorderSide(color: AppColors.ink),
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(
-                  height: 52,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
-                    children: [
-                      for (final category in InventoryData.categories)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: ChoiceChip(
-                            label: Text(category),
-                            selected: _category == category,
-                            onSelected: (_) =>
-                                setState(() => _category = category),
-                            selectedColor: AppColors.mint,
-                            backgroundColor: AppColors.surface,
-                            side: BorderSide.none,
-                            showCheckmark: false,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-                  child: Text(
-                    'Ketuk kartu untuk restok · centang untuk pilih',
-                    style:
-                        textTheme.labelSmall?.copyWith(color: AppColors.muted),
-                  ),
-                ),
-                Expanded(
-                  child: items.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Produk tidak ditemukan',
-                            style: textTheme.bodyMedium?.copyWith(
-                              color: AppColors.muted,
+                          Expanded(
+                            child: Text(
+                              'Inventory',
+                              textAlign: TextAlign.center,
+                              style: textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
-                        )
-                      : GridView.count(
-                          crossAxisCount: 2,
-                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          childAspectRatio: 0.66,
-                          children: [
-                            for (final item in items)
-                              _ItemCard(
-                                item: item,
-                                selected: _selected.contains(item.name),
-                                gradient: _gradientFor(_salesRank(item)),
-                                onSelect: () => _toggleSelected(item),
-                                onRestock: () => _openRestock(item),
-                              ),
-                          ],
+                          _RoundButton(
+                            icon: Icons.more_horiz_rounded,
+                            onTap: () {
+                              // TODO: inventory menu
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) => setState(() => _query = value),
+                        decoration: InputDecoration(
+                          hintText: 'Cari produk...',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                          filled: true,
+                          fillColor: AppColors.surface,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: BorderSide.none,
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(999),
+                            borderSide: const BorderSide(color: AppColors.ink),
+                          ),
                         ),
+                      ),
+                    ),
+                    SizedBox(
+                      height: 52,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
+                        children: [
+                          for (final category in InventoryData.categories)
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: ChoiceChip(
+                                label: Text(category),
+                                selected: _category == category,
+                                onSelected: (_) =>
+                                    setState(() => _category = category),
+                                selectedColor: AppColors.mint,
+                                backgroundColor: AppColors.surface,
+                                side: BorderSide.none,
+                                showCheckmark: false,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+                      child: Text(
+                        'Ketuk kartu untuk restok · centang untuk pilih',
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: AppColors.muted),
+                      ),
+                    ),
+                    Expanded(
+                      child: items.isEmpty
+                          ? Center(
+                              child: Text(
+                                all.isEmpty
+                                    ? 'Belum ada produk. Tekan + untuk menambah.'
+                                    : 'Produk tidak ditemukan',
+                                style: textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            )
+                          : GridView.count(
+                              crossAxisCount: 2,
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 0.66,
+                              children: [
+                                for (final item in items)
+                                  _ItemCard(
+                                    item: item,
+                                    selected: _selected.contains(item.id),
+                                    gradient:
+                                        _gradientFor(_salesRank(all, item)),
+                                    onSelect: () => _toggleSelected(item),
+                                    onRestock: () => _restock(item),
+                                  ),
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          // Floating buttons sit over the grid, no bar behind them.
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 12,
-            child: SafeArea(
-              top: false,
-              child: Row(
-                children: [
-                  Material(
-                    color: Colors.white,
-                    shape: const CircleBorder(),
-                    elevation: 6,
-                    shadowColor: Colors.black.withValues(alpha: 0.3),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: _openAddItem,
-                      child: const SizedBox(
-                        width: 60,
-                        height: 60,
-                        child: Icon(Icons.add_rounded,
-                            color: AppColors.ink, size: 28),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _openMixMatch,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.purple,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(0, 60),
-                        shape: const StadiumBorder(),
-                      ),
-                      icon: const Icon(Icons.auto_awesome, size: 18),
-                      label: Text(
-                        _selected.isEmpty
-                            ? 'Buat Resep AI'
-                            : 'Buat Resep AI (${_selected.length})',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    onPressed: _openPublish,
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 60),
-                      shape: const StadiumBorder(),
-                    ),
-                    icon: const Icon(Icons.storefront_outlined, size: 18),
-                    label: const Text('Jual'),
-                  ),
-                ],
               ),
-            ),
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 12,
+                child: SafeArea(
+                  top: false,
+                  child: Row(
+                    children: [
+                      Material(
+                        color: Colors.white,
+                        shape: const CircleBorder(),
+                        elevation: 6,
+                        shadowColor: Colors.black.withValues(alpha: 0.3),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: _addItem,
+                          child: const SizedBox(
+                            width: 60,
+                            height: 60,
+                            child: Icon(
+                              Icons.add_rounded,
+                              color: AppColors.ink,
+                              size: 28,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _openMixMatch(all),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.purple,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 60),
+                            shape: const StadiumBorder(),
+                          ),
+                          icon: const Icon(Icons.auto_awesome, size: 18),
+                          label: Text(
+                            _selected.isEmpty
+                                ? 'Buat Resep AI'
+                                : 'Buat Resep AI (${_selected.length})',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      ElevatedButton.icon(
+                        onPressed: () => _openPublish(all),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(0, 60),
+                          shape: const StadiumBorder(),
+                        ),
+                        icon: const Icon(Icons.storefront_outlined, size: 18),
+                        label: const Text('Jual'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -375,9 +443,7 @@ class _ItemCard extends StatelessWidget {
                 const Spacer(),
                 Text(
                   item.category,
-                  style: textTheme.labelSmall?.copyWith(
-                    color: AppColors.muted,
-                  ),
+                  style: textTheme.labelSmall?.copyWith(color: AppColors.muted),
                 ),
               ],
             ),
@@ -417,9 +483,8 @@ class _ItemCard extends StatelessWidget {
               ),
               child: Text(
                 item.stockLabel,
-                style: textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                style:
+                    textTheme.labelSmall?.copyWith(fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -452,10 +517,7 @@ class _Checkbox extends StatelessWidget {
 }
 
 class _RoundButton extends StatelessWidget {
-  const _RoundButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _RoundButton({required this.icon, required this.onTap});
 
   final IconData icon;
   final VoidCallback onTap;

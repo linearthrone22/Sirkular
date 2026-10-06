@@ -1,29 +1,76 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/format/format.dart';
 import '../../../core/theme/app_colors.dart';
-import '../data/platform_data.dart';
+import '../data/dashboard_repository.dart';
+import '../data/dashboard_service.dart';
 import 'widgets/dashboard_widgets.dart';
 import 'widgets/mobile_cards.dart';
 
 /// Text-heavy analytics for one platform, with ads and store settings.
+/// Settings changes are saved to SQLite as they happen.
 class PlatformAnalyticsPage extends StatefulWidget {
-  const PlatformAnalyticsPage({super.key, required this.data});
+  const PlatformAnalyticsPage({
+    super.key,
+    required this.userId,
+    required this.platformKey,
+  });
 
-  final PlatformAnalytics data;
+  final int userId;
+  final String platformKey;
 
   @override
   State<PlatformAnalyticsPage> createState() => _PlatformAnalyticsPageState();
 }
 
 class _PlatformAnalyticsPageState extends State<PlatformAnalyticsPage> {
-  late bool _autoReply = widget.data.autoReplyOn;
-  late bool _voucher = widget.data.voucherOn;
-  late double _budget = widget.data.adsBudget.toDouble();
+  final _service = DashboardService();
+  final _repository = DashboardRepository();
+  late final Future<PlatformAnalytics> _future =
+      _service.platform(widget.userId, widget.platformKey);
+
+  // Settings as the user is editing them. Loaded once from the database.
+  bool? _autoReply;
+  bool? _voucher;
+  double? _budget;
+
+  Future<void> _save() {
+    return _repository.savePlatformSettings(
+      widget.userId,
+      widget.platformKey,
+      PlatformSettingsRecord(
+        autoReply: _autoReply ?? false,
+        voucherOn: _voucher ?? false,
+        adBudgetIdr: (_budget ?? 0).round(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.data;
+    return FutureBuilder<PlatformAnalytics>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Scaffold(
+            body: Center(child: Text('Gagal memuat: ${snapshot.error}')),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const Scaffold(
+              body: Center(child: CircularProgressIndicator()));
+        }
+        final data = snapshot.requireData;
+        _autoReply ??= data.autoReplyOn;
+        _voucher ??= data.voucherOn;
+        _budget ??= data.adsBudget.toDouble();
+        return _buildContent(context, data);
+      },
+    );
+  }
+
+  Widget _buildContent(BuildContext context, PlatformAnalytics data) {
     final textTheme = Theme.of(context).textTheme;
     final muted = textTheme.bodySmall?.copyWith(color: AppColors.muted);
 
@@ -102,44 +149,47 @@ class _PlatformAnalyticsPageState extends State<PlatformAnalyticsPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SectionTitle(
-                    data.name == 'Shopee' ? 'Shopee Ads' : 'TopAds',
+                    data.key == 'shopee' ? 'Shopee Ads' : 'TopAds',
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Kata kunci dengan klik terbanyak. ROAS di atas 3x berarti setiap Rp 1 iklan menghasilkan Rp 3 penjualan.',
+                    'Kata kunci dengan klik terbanyak hari ini. ROAS di atas 3x berarti setiap Rp 1 iklan menghasilkan Rp 3 penjualan.',
                     style: muted,
                   ),
                   const SizedBox(height: 12),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: DataTable(
-                      headingRowHeight: 36,
-                      dataRowMinHeight: 40,
-                      dataRowMaxHeight: 40,
-                      columnSpacing: 24,
-                      columns: [
-                        DataColumn(label: Text('Kata kunci', style: muted)),
-                        DataColumn(
-                            label: Text('Klik', style: muted), numeric: true),
-                        DataColumn(
-                            label: Text('Belanja', style: muted),
-                            numeric: true),
-                        DataColumn(
-                            label: Text('ROAS', style: muted), numeric: true),
-                      ],
-                      rows: [
-                        for (final k in data.keywords)
-                          DataRow(
-                            cells: [
-                              DataCell(Text(k.keyword)),
-                              DataCell(Text('${k.clicks}')),
-                              DataCell(Text(PlatformData.rupiah(k.spend))),
-                              DataCell(Text(k.roas)),
-                            ],
-                          ),
-                      ],
+                  if (data.keywords.isEmpty)
+                    Text('Belum ada data kata kunci hari ini.', style: muted)
+                  else
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: DataTable(
+                        headingRowHeight: 36,
+                        dataRowMinHeight: 40,
+                        dataRowMaxHeight: 40,
+                        columnSpacing: 24,
+                        columns: [
+                          DataColumn(label: Text('Kata kunci', style: muted)),
+                          DataColumn(
+                              label: Text('Klik', style: muted), numeric: true),
+                          DataColumn(
+                              label: Text('Belanja', style: muted),
+                              numeric: true),
+                          DataColumn(
+                              label: Text('ROAS', style: muted), numeric: true),
+                        ],
+                        rows: [
+                          for (final k in data.keywords)
+                            DataRow(
+                              cells: [
+                                DataCell(Text(k.keyword)),
+                                DataCell(Text('${k.clicks}')),
+                                DataCell(Text(rupiah(k.spend))),
+                                DataCell(Text(k.roas)),
+                              ],
+                            ),
+                        ],
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -201,10 +251,13 @@ class _PlatformAnalyticsPageState extends State<PlatformAnalyticsPage> {
                       'Balas otomatis pertanyaan stok dan pengiriman.',
                       style: muted,
                     ),
-                    value: _autoReply,
+                    value: _autoReply!,
                     activeTrackColor: AppColors.mint,
                     activeThumbColor: Colors.white,
-                    onChanged: (v) => setState(() => _autoReply = v),
+                    onChanged: (v) {
+                      setState(() => _autoReply = v);
+                      _save();
+                    },
                   ),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -213,28 +266,32 @@ class _PlatformAnalyticsPageState extends State<PlatformAnalyticsPage> {
                       'Tampilkan voucher di halaman produk.',
                       style: muted,
                     ),
-                    value: _voucher,
+                    value: _voucher!,
                     activeTrackColor: AppColors.mint,
                     activeThumbColor: Colors.white,
-                    onChanged: (v) => setState(() => _voucher = v),
+                    onChanged: (v) {
+                      setState(() => _voucher = v);
+                      _save();
+                    },
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Anggaran iklan harian: ${PlatformData.rupiah(_budget.round())}',
+                    'Anggaran iklan harian: ${rupiah(_budget!.round())}',
                     style: textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                   Slider(
-                    value: _budget,
+                    value: _budget!,
                     min: 50000,
                     max: 300000,
                     divisions: 25,
                     activeColor: AppColors.ink,
                     onChanged: (v) => setState(() => _budget = v),
+                    onChangeEnd: (_) => _save(),
                   ),
                   Text(
-                    'Terpakai hari ini ${PlatformData.rupiah(data.adsSpent)} dari ${PlatformData.rupiah(data.adsBudget)}',
+                    'Terpakai hari ini ${rupiah(data.adsSpent)} dari ${rupiah(data.adsBudget)}',
                     style: muted,
                   ),
                 ],

@@ -1,43 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:sirkular/core/theme/app_theme.dart';
-import 'package:sirkular/features/auth/data/user_repository.dart';
 import 'package:sirkular/features/dashboard/presentation/home_page.dart';
 
-const _user = User(id: 1, name: 'Kopi Senja', email: 'kopi@senja.id');
+import 'support/seeded_db.dart';
 
-Future<void> _pumpAt(WidgetTester tester, Size size) async {
+Future<void> _pumpAt(WidgetTester tester, Size size, Widget home) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
 
-  await tester.pumpWidget(
-    MaterialApp(
-      theme: AppTheme.light(),
-      home: const HomePage(user: _user),
-    ),
-  );
-  // Charts animate on entry; advance past them instead of settling forever.
-  await tester.pump(const Duration(seconds: 2));
+  await tester.pumpWidget(MaterialApp(theme: testTheme(), home: home));
+  await settle(tester);
 }
 
 void main() {
-  testWidgets('web dashboard lays out without overflow', (tester) async {
-    await _pumpAt(tester, const Size(1366, 900));
+  testWidgets('web dashboard shows Johanes data without overflow',
+      (tester) async {
+    final user = await openSeededTestDb(tester);
+    await _pumpAt(tester, const Size(1366, 900), HomePage(user: user));
 
     expect(tester.takeException(), isNull);
     expect(find.text('Sirkular'), findsOneWidget);
     expect(find.text('Generate AI R&D'), findsOneWidget);
     expect(find.text('Live Sync Orders'), findsOneWidget);
+    expect(find.text('Roti tawar mendekati kedaluwarsa'), findsOneWidget);
   });
 
-  testWidgets('mobile dashboard lays out without overflow', (tester) async {
-    await _pumpAt(tester, const Size(390, 844));
+  testWidgets('mobile dashboard shows Johanes data without overflow',
+      (tester) async {
+    final user = await openSeededTestDb(tester);
+    await _pumpAt(tester, const Size(390, 844), HomePage(user: user));
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Halo, Kopi'), findsOneWidget);
-    expect(find.text('3 AI Alerts'), findsOneWidget);
+    expect(find.text('Halo, Johanes'), findsOneWidget);
+    expect(find.text('2 AI Alerts'), findsOneWidget);
+    expect(find.text('Rp 23.876.000'), findsOneWidget);
   });
 }

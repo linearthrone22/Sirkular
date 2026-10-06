@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../auth/data/user_repository.dart';
-import '../../data/dashboard_data.dart';
 import '../home_page.dart';
 
 /// White rounded card with the soft shadow used across the app.
@@ -143,8 +142,15 @@ class KpiCard extends StatelessWidget {
 
 /// Gradient banner that surfaces the most urgent AI alert.
 class AiAlertBanner extends StatelessWidget {
-  const AiAlertBanner({super.key, required this.onTap});
+  const AiAlertBanner({
+    super.key,
+    required this.title,
+    required this.body,
+    required this.onTap,
+  });
 
+  final String title;
+  final String body;
   final VoidCallback onTap;
 
   @override
@@ -167,7 +173,7 @@ class AiAlertBanner extends StatelessWidget {
           const Icon(Icons.auto_awesome, color: Colors.white, size: 28),
           const Spacer(),
           Text(
-            DashboardData.aiAlertTitle,
+            title,
             style: textTheme.titleMedium?.copyWith(
               color: Colors.white,
               fontWeight: FontWeight.w700,
@@ -175,7 +181,7 @@ class AiAlertBanner extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            DashboardData.aiAlertBody,
+            body,
             style: textTheme.bodySmall?.copyWith(color: Colors.white70),
           ),
           const SizedBox(height: 16),

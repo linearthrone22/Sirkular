@@ -4,7 +4,7 @@ import '../../../core/theme/app_colors.dart';
 import '../data/inventory_data.dart';
 
 /// One-click publish: choose platforms, then send all selected products.
-/// Pops with `true` when published.
+/// Pops with the set of platform names that were chosen.
 class PublishSheet extends StatefulWidget {
   const PublishSheet({super.key, required this.items});
 
@@ -35,7 +35,9 @@ class _PublishSheetState extends State<PublishSheet> {
     final messenger = ScaffoldMessenger.of(context);
     final count = _chosenCount;
     final products = widget.items.length;
-    Navigator.of(context).pop(true);
+    Navigator.of(context).pop(
+      _chosen.entries.where((e) => e.value).map((e) => e.key).toSet(),
+    );
     messenger.showSnackBar(
       SnackBar(
         content: Text(
