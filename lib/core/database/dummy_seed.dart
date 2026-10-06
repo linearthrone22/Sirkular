@@ -421,7 +421,7 @@ class DummySeed {
         itemName: item,
         totalIdr: total,
         status: status,
-        externalRef: 'LIVE-${i + 1}',
+        externalRef: 'LIVE-$userId-${i + 1}',
         orderedAt: time.toIso8601String(),
       );
     }
@@ -447,7 +447,7 @@ class DummySeed {
         itemName: history[i % history.length],
         totalIdr: 15000 + (i * 4000) % 40000,
         status: statuses[i],
-        externalRef: 'HIST-${i + 1}',
+        externalRef: 'HIST-$userId-${i + 1}',
         orderedAt: DateTime(
           yesterday.year,
           yesterday.month,
