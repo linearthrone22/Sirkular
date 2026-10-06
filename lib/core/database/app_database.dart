@@ -1,54 +1,67 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import 'schema.dart';
+
 /// Owns the single SQLite connection for the app.
 ///
 /// Usage: `final db = await AppDatabase.instance.database;`
+/// Tests open a separate database with [AppDatabase.open].
 class AppDatabase {
-  AppDatabase._();
+  AppDatabase._({DatabaseFactory? factory, String? path})
+      : _factory = factory,
+        _path = path;
 
   static final AppDatabase instance = AppDatabase._();
 
+  /// Opens a database at [path] using [factory], for example an in-memory
+  /// database in tests.
+  factory AppDatabase.open({
+    required DatabaseFactory factory,
+    required String path,
+  }) {
+    return AppDatabase._(factory: factory, path: path);
+  }
+
   static const _fileName = 'sirkular.db';
 
-  /// Bump this when the schema changes and handle it in [_onUpgrade].
-  static const _version = 1;
-
+  final DatabaseFactory? _factory;
+  final String? _path;
   Database? _database;
+
+  /// Current time as ISO-8601 text, the format used by every timestamp column.
+  static String now() => DateTime.now().toIso8601String();
 
   Future<Database> get database async {
     final existing = _database;
     if (existing != null) return existing;
 
-    final path = p.join(await getDatabasesPath(), _fileName);
-    final db = await openDatabase(
+    final factory = _factory ?? databaseFactory;
+    final path = _path ?? p.join(await getDatabasesPath(), _fileName);
+    final db = await factory.openDatabase(
       path,
-      version: _version,
-      onConfigure: (db) async {
-        await db.execute('PRAGMA foreign_keys = ON');
-      },
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
+      options: OpenDatabaseOptions(
+        version: currentSchemaVersion,
+        onConfigure: (db) async {
+          await db.execute('PRAGMA foreign_keys = ON');
+        },
+        onCreate: (db, _) => _runMigrations(db, 0, currentSchemaVersion),
+        onUpgrade: (db, oldVersion, newVersion) =>
+            _runMigrations(db, oldVersion, newVersion),
+      ),
     );
     _database = db;
     return db;
   }
 
-  Future<void> _onCreate(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE users (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        name          TEXT    NOT NULL,
-        email         TEXT    NOT NULL UNIQUE,
-        password_hash TEXT    NOT NULL,
-        salt          TEXT    NOT NULL,
-        created_at    TEXT    NOT NULL
-      )
-    ''');
-  }
-
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // No migrations yet. Add `if (oldVersion < 2) { ... }` blocks here.
+  /// Runs every migration after [from] up to and including [to], in order.
+  static Future<void> _runMigrations(Database db, int from, int to) async {
+    for (final migration in migrations) {
+      if (migration.version <= from || migration.version > to) continue;
+      for (final statement in migration.statements) {
+        await db.execute(statement);
+      }
+    }
   }
 
   Future<void> close() async {
